@@ -104,15 +104,24 @@
     .step-progress { font-size: 0.8rem; color: #666; margin: 4px 0 8px; }
     .step-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
-    /* ===== 手書きサイン モーダル ===== */
+    /* ===== 店控え書類の保管 (端末ローカル / IndexedDB) ===== */
+    .doc-capture-actions { display: flex; gap: 8px; margin-top: 6px; }
+    .doc-capture-btn { padding: 12px 10px; font-weight: bold; border-radius: 6px; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 5px; flex: 1; text-align: center; white-space: nowrap; }
+    .doc-thumb-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
+    .doc-thumb { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; border: 1px solid #e1e4e8; cursor: pointer; background: #eee; }
+    .doc-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .doc-thumb-memo { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.55); color: white; font-size: 0.62rem; padding: 3px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ===== 手書きサイン / 書類ビューア モーダル (共用) ===== */
     .sig-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: none; align-items: center; justify-content: center; z-index: 60; padding: 20px; }
     .sig-overlay.open { display: flex; }
-    .sig-modal { background: white; border-radius: 12px; padding: 16px; width: min(94%, 400px); }
+    .sig-modal { background: white; border-radius: 12px; padding: 16px; width: min(94%, 400px); max-height: 90vh; overflow-y: auto; }
     .sig-modal h2 { margin-bottom: 4px; }
     .sig-hint { font-size: 0.8rem; color: #666; margin-bottom: 10px; }
     .sig-canvas { width: 100%; height: 180px; border: 1px solid #ccc; border-radius: 8px; touch-action: none; background: #fff; display: block; }
-    .sig-actions { display: flex; gap: 8px; margin-top: 12px; }
-    .sig-actions button { flex: 1; }
+    .sig-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .sig-actions button { flex: 1; min-width: 90px; }
+    .doc-viewer-img { width: 100%; border-radius: 8px; margin: 8px 0; display: block; }
   </style>
 </head>
 <body>
@@ -155,6 +164,11 @@
         <span class="grid-icon">🎓</span>
         <div class="grid-label" id="trainingCardLabel">トレーニング管理</div>
         <div class="grid-desc">進捗・サイン記録</div>
+      </div>
+      <div class="grid-card" onclick="openView('documents')">
+        <span class="grid-icon">🧾</span>
+        <div class="grid-label">店控え書類</div>
+        <div class="grid-desc">レシート等を撮影保管(端末内)</div>
       </div>
     </div>
   </div>
@@ -279,6 +293,48 @@
     <div id="trainingStepList"></div>
   </div>
 
+  <!-- ===== 店控え書類の保管 (端末ローカル / IndexedDB) ===== -->
+  <div data-view="documents">
+    <div class="view-topbar">
+      <button class="back-btn" onclick="openView('home')">‹</button>
+      <div class="view-title">🧾 店控え書類の保管</div>
+      <button class="settings-btn" onclick="openSideDrawer()">⚙️</button>
+    </div>
+    <p class="status">この端末内にのみ保存され、他の端末やクラウドには送信されません。端末の故障・初期化に備え、下部の「まとめてダウンロード」から定期的にバックアップしてください。</p>
+
+    <div class="card">
+      <label for="docMemoInput">メモ（任意）</label>
+      <input type="text" id="docMemoInput" placeholder="例: 本日の売上レシート">
+      <label for="docDateInput">日付</label>
+      <input type="date" id="docDateInput">
+      <div class="doc-capture-actions">
+        <label class="btn-primary doc-capture-btn">
+          📷 カメラで撮影
+          <input type="file" id="docCameraInput" accept="image/*" capture="environment" hidden onchange="handleDocFiles(this.files)">
+        </label>
+        <label class="btn-secondary doc-capture-btn">
+          🖼 ファイルから選択（複数可）
+          <input type="file" id="docFileInput" accept="image/*" multiple hidden onchange="handleDocFiles(this.files)">
+        </label>
+      </div>
+      <div id="docSaveStatus" class="status"></div>
+    </div>
+
+    <details>
+      <summary>📦 まとめてダウンロード（バックアップ）</summary>
+      <div style="margin-top: 10px;">
+        <label for="backupFromDate">開始日</label>
+        <input type="date" id="backupFromDate">
+        <label for="backupToDate">終了日</label>
+        <input type="date" id="backupToDate">
+        <button class="btn-primary" onclick="exportDocsBackup()">📦 ZIPをダウンロード</button>
+        <div id="backupStatus" class="status"></div>
+      </div>
+    </details>
+
+    <div id="docList"></div>
+  </div>
+
   <!-- ===== 設定サイドパネル ===== -->
   <div id="sideDrawerOverlay" class="side-drawer-overlay" onclick="closeSideDrawer()"></div>
   <div id="sideDrawer" class="side-drawer">
@@ -336,6 +392,21 @@
     </div>
   </div>
 
+  <!-- ===== 書類ビューア モーダル ===== -->
+  <div id="docViewerOverlay" class="sig-overlay">
+    <div class="sig-modal">
+      <h2 id="docViewerTitle">書類</h2>
+      <img id="docViewerImg" class="doc-viewer-img" alt="書類の写真">
+      <div class="entry-meta" id="docViewerMeta"></div>
+      <div class="sig-actions">
+        <button class="btn-clear" onclick="closeDocViewer()">閉じる</button>
+        <button class="btn-outline" onclick="downloadCurrentDoc()">⬇️ ダウンロード</button>
+        <button class="btn-danger" onclick="deleteCurrentDoc()">削除</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="vendor/jszip.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
@@ -343,7 +414,7 @@
 
   <script>
     // ===== ナビゲーション (ホームのグリッド ⇔ 各機能ビュー) =====
-    const VIEWS = ['home', 'notebook', 'bulletin', 'manual', 'chat', 'lostfound', 'training'];
+    const VIEWS = ['home', 'notebook', 'bulletin', 'manual', 'chat', 'lostfound', 'training', 'documents'];
 
     function openView(view) {
       VIEWS.forEach(v => {
@@ -381,12 +452,17 @@
 
       const lostDateInput = document.getElementById('lostDateInput');
       const today = new Date();
-      lostDateInput.value = today.toISOString().slice(0, 10);
+      const todayStr = today.toISOString().slice(0, 10);
+      lostDateInput.value = todayStr;
+      document.getElementById('docDateInput').value = todayStr;
+      document.getElementById('backupFromDate').value = todayStr;
+      document.getElementById('backupToDate').value = todayStr;
 
       document.getElementById('chatMessageInput').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') sendChatMessage();
       });
 
+      renderDocList();
       initFirebase();
       initSignaturePad();
     });
@@ -1079,6 +1155,227 @@
 
         container.appendChild(row);
       });
+    }
+
+    // ===== 店控え書類の保管 (端末ローカルのみ / IndexedDB、Firebaseは使わない) =====
+    const DOCS_DB_NAME = 'storeDocsDB';
+    const DOCS_STORE_NAME = 'documents';
+    let docsDbPromise = null;
+    let docObjectUrls = [];
+    let currentDocViewerId = null;
+
+    function openDocsDb() {
+      if (docsDbPromise) return docsDbPromise;
+      docsDbPromise = new Promise((resolve, reject) => {
+        const req = indexedDB.open(DOCS_DB_NAME, 1);
+        req.onupgradeneeded = (e) => {
+          const idb = e.target.result;
+          if (!idb.objectStoreNames.contains(DOCS_STORE_NAME)) {
+            const store = idb.createObjectStore(DOCS_STORE_NAME, { keyPath: 'id' });
+            store.createIndex('date', 'date', { unique: false });
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      return docsDbPromise;
+    }
+
+    async function addDocRecord(record) {
+      const idb = await openDocsDb();
+      return new Promise((resolve, reject) => {
+        const tx = idb.transaction(DOCS_STORE_NAME, 'readwrite');
+        tx.objectStore(DOCS_STORE_NAME).add(record);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    async function getAllDocRecords() {
+      const idb = await openDocsDb();
+      return new Promise((resolve, reject) => {
+        const tx = idb.transaction(DOCS_STORE_NAME, 'readonly');
+        const req = tx.objectStore(DOCS_STORE_NAME).getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function getDocRecord(id) {
+      const idb = await openDocsDb();
+      return new Promise((resolve, reject) => {
+        const tx = idb.transaction(DOCS_STORE_NAME, 'readonly');
+        const req = tx.objectStore(DOCS_STORE_NAME).get(id);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function deleteDocRecord(id) {
+      const idb = await openDocsDb();
+      return new Promise((resolve, reject) => {
+        const tx = idb.transaction(DOCS_STORE_NAME, 'readwrite');
+        tx.objectStore(DOCS_STORE_NAME).delete(id);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    function extFromMime(mime) {
+      if (mime === 'image/png') return 'png';
+      if (mime === 'image/webp') return 'webp';
+      return 'jpg';
+    }
+
+    async function handleDocFiles(fileList) {
+      const files = Array.from(fileList || []);
+      if (files.length === 0) return;
+      const statusEl = document.getElementById('docSaveStatus');
+      const memo = document.getElementById('docMemoInput').value.trim();
+      const date = document.getElementById('docDateInput').value || new Date().toISOString().slice(0, 10);
+
+      statusEl.innerText = `保存中... (0/${files.length})`;
+      let saved = 0;
+      for (const file of files) {
+        const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const record = {
+          id, date, memo,
+          fileName: `${date}_${id}.${extFromMime(file.type)}`,
+          mimeType: file.type || 'image/jpeg',
+          blob: file,
+          createdAt: Date.now()
+        };
+        await addDocRecord(record);
+        saved++;
+        statusEl.innerText = `保存中... (${saved}/${files.length})`;
+      }
+      statusEl.innerText = `✅ ${saved}件を端末内に保存しました`;
+      document.getElementById('docCameraInput').value = '';
+      document.getElementById('docFileInput').value = '';
+      renderDocList();
+    }
+
+    function revokeDocObjectUrls() {
+      docObjectUrls.forEach(u => URL.revokeObjectURL(u));
+      docObjectUrls = [];
+    }
+
+    async function renderDocList() {
+      const container = document.getElementById('docList');
+      if (!container) return;
+      revokeDocObjectUrls();
+      const records = await getAllDocRecords();
+      if (records.length === 0) {
+        container.innerHTML = '<div class="empty-state">保管されている書類はまだありません</div>';
+        return;
+      }
+      records.sort((a, b) => b.createdAt - a.createdAt);
+
+      const dates = [];
+      records.forEach(r => { if (!dates.includes(r.date)) dates.push(r.date); });
+
+      container.innerHTML = '';
+      dates.forEach(date => {
+        const heading = document.createElement('div');
+        heading.className = 'manual-category-heading';
+        heading.innerText = date;
+        container.appendChild(heading);
+
+        const grid = document.createElement('div');
+        grid.className = 'doc-thumb-grid';
+        records.filter(r => r.date === date).forEach(r => {
+          const thumb = document.createElement('div');
+          thumb.className = 'doc-thumb';
+          const url = URL.createObjectURL(r.blob);
+          docObjectUrls.push(url);
+          const img = document.createElement('img');
+          img.src = url;
+          img.alt = r.memo || r.fileName;
+          thumb.appendChild(img);
+          if (r.memo) {
+            const memoLabel = document.createElement('div');
+            memoLabel.className = 'doc-thumb-memo';
+            memoLabel.innerText = r.memo;
+            thumb.appendChild(memoLabel);
+          }
+          thumb.onclick = () => openDocViewer(r.id, url);
+          grid.appendChild(thumb);
+        });
+        container.appendChild(grid);
+      });
+    }
+
+    function openDocViewer(id, url) {
+      currentDocViewerId = id;
+      getDocRecord(id).then(r => {
+        if (!r) return;
+        document.getElementById('docViewerImg').src = url;
+        document.getElementById('docViewerTitle').innerText = r.memo || '書類';
+        document.getElementById('docViewerMeta').innerText = `${r.date} ・ ${r.fileName}`;
+        document.getElementById('docViewerOverlay').classList.add('open');
+      });
+    }
+
+    function closeDocViewer() {
+      document.getElementById('docViewerOverlay').classList.remove('open');
+      currentDocViewerId = null;
+    }
+
+    async function downloadCurrentDoc() {
+      if (!currentDocViewerId) return;
+      const r = await getDocRecord(currentDocViewerId);
+      if (!r) return;
+      const url = URL.createObjectURL(r.blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = r.fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    async function deleteCurrentDoc() {
+      if (!currentDocViewerId) return;
+      if (!confirm('この書類を削除しますか？（端末内のデータが完全に削除されます）')) return;
+      await deleteDocRecord(currentDocViewerId);
+      closeDocViewer();
+      renderDocList();
+    }
+
+    async function exportDocsBackup() {
+      const fromDate = document.getElementById('backupFromDate').value;
+      const toDate = document.getElementById('backupToDate').value;
+      const statusEl = document.getElementById('backupStatus');
+      if (!fromDate || !toDate) {
+        statusEl.innerText = '開始日と終了日を指定してください';
+        return;
+      }
+      statusEl.innerText = '書類を集めています...';
+      const records = await getAllDocRecords();
+      const filtered = records.filter(r => r.date >= fromDate && r.date <= toDate);
+      if (filtered.length === 0) {
+        statusEl.innerText = '該当する書類がありません';
+        return;
+      }
+      statusEl.innerText = `ZIPを作成中... (0/${filtered.length})`;
+      const zip = new JSZip();
+      let done = 0;
+      for (const r of filtered) {
+        zip.folder(r.date).file(r.fileName, r.blob);
+        done++;
+        statusEl.innerText = `ZIPを作成中... (${done}/${filtered.length})`;
+      }
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `店控え書類_${fromDate}_${toDate}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      statusEl.innerText = `✅ ${filtered.length}件をダウンロードしました`;
     }
 
     // ===== 手書きサイン モーダル (掲示板の既読確認・トレーニング完了で共用) =====
