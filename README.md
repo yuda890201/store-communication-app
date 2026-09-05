@@ -144,6 +144,14 @@
 4. ブラウザには HTTPS（または `localhost`）でアクセスしている必要があります（カメラ・マイクの利用に必須のブラウザ制約です）。GitHub PagesやFirebase Hostingなど、通常の静的ホスティングは標準でHTTPSなので問題ありません
 5. TURN中継サーバーを使わない構成のため、双方が同じような一般的なネットワーク（自宅Wi-Fi・モバイル回線など）にいれば繋がりますが、厳しいファイアウォール環境では接続できないことがあります。安定運用したくなった場合は、有料のTURNサービス（Twilioなど）か自前のcoturnサーバーの追加をご検討ください
 
-## ホスティング
+## ホスティング（GitHub Pagesへの自動デプロイ）
 
 `index.html` は単体の静的ファイルなので、Firebase Hosting・GitHub Pages・Netlifyなど任意の静的ホスティングにそのまま配置できます。
+
+このリポジトリには `.github/workflows/deploy-pages.yml` を同梱しており、`main` ブランチにpushするたびに自動でGitHub Pagesへデプロイされます（ビルド不要、リポジトリのファイルをそのまま公開）。有効にするには、リポジトリの管理者権限が必要な設定を1回だけ行ってください（これはGitHub Appの権限では変更できないため、リポジトリオーナーの方の操作が必要です）。
+
+1. GitHubの当リポジトリで **Settings → Pages** を開く
+2. **Build and deployment → Source** を `Deploy from a branch` から **`GitHub Actions`** に変更する
+3. `main` ブランチにpush（または `Actions` タブから `Deploy to GitHub Pages` ワークフローを手動実行）すると数十秒でデプロイされ、`https://<ユーザー名>.github.io/store-communication-app/` で公開されます
+
+以降は `main` にpushするだけで自動的に最新版が反映されます。デプロイ状況は `Actions` タブから確認できます。
