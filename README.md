@@ -99,6 +99,8 @@
 
    > 管理者は自分宛ての着信を全スタッフ分まとめて検知するために `calls` コレクショングループに対してクエリしますが、上記ルールは各ドキュメントの実際のパス（`dmChannels/{staffUid}/calls/{callId}`）に対して個別に評価されるため、コレクショングループクエリでも同じ権限がそのまま適用されます。Firestoreの単一フィールドインデックスは自動作成されるため、このクエリのために手動でインデックスを作成する必要はありません。
 
+   > 同じ内容はリポジトリの [`firestore.rules`](./firestore.rules) にも入っています。手動でコンソールに貼り付ける代わりに、下記「Firestore/Storageルールの自動デプロイ」の設定をしておけば、このファイルを編集してpushするだけで自動反映されます。
+
 6. Storageの「ルール」を以下のように設定（匿名認証・メール認証を問わず、ログイン済み端末のみ読み書き許可）
 
    ```
@@ -113,6 +115,8 @@
    ```
 
    > **注記**: `getDownloadURL()` が返すURLはアクセストークン付きの直リンクのため、そのURL自体が漏えいすると認証なしで閲覧できてしまいます（忘れ物の写真・管理者チャットの添付ファイル共通の制約です）。URLはFirestore側のドキュメント（アクセス制御あり）にのみ保存され、アプリ外に表示・共有はしていません。
+
+   > 同じ内容はリポジトリの [`storage.rules`](./storage.rules) にも入っています。
 
 7. 「プロジェクトの設定」→「マイアプリ」でウェブアプリを追加し、表示される `firebaseConfig` オブジェクトをコピー
 
@@ -155,3 +159,31 @@
 3. `main` ブランチにpush（または `Actions` タブから `Deploy to GitHub Pages` ワークフローを手動実行）すると数十秒でデプロイされ、`https://<ユーザー名>.github.io/store-communication-app/` で公開されます
 
 以降は `main` にpushするだけで自動的に最新版が反映されます。デプロイ状況は `Actions` タブから確認できます。
+
+## Firestore/Storageルールの自動デプロイ（任意）
+
+`firestore.rules`・`storage.rules` を編集してpushするだけで、Firebaseコンソールを開かずにルールを反映できるようにする設定です。必須ではありません（手動でコンソールに貼り付ける運用のままでも問題ありません）が、今後ルールを改修する機会が多い場合はおすすめです。
+
+### 1. サービスアカウントの秘密鍵を発行（Firebaseコンソール）
+
+1. 対象のFirebaseプロジェクトで「プロジェクトの設定」→「サービスアカウント」タブを開く
+2. 「新しい秘密鍵の生成」をクリックし、JSONファイルをダウンロードする
+3. ⚠️ **このJSONファイルの中身（秘密鍵）は誰にも共有しないでください**（Claudeとのチャットにも貼らないでください）。手順4で使うのはファイルの中身そのものです
+
+### 2. Google Cloud ConsoleでIAM権限を付与
+
+1. `https://console.cloud.google.com/iam-admin/iam?project={プロジェクトID}` を開く（`{プロジェクトID}` は自分のFirebaseプロジェクトIDに置き換え）
+2. 手順1でダウンロードしたJSON内の `client_email` の値（例: `firebase-adminsdk-fbsvc@xxxx.iam.gserviceaccount.com`）を一覧から探す。あれば鉛筆アイコンで編集、なければ「+ アクセスを許可」で新規入力
+3. 以下の2つのロールを付与して保存
+   - **Firebase Rules Admin** (`roles/firebaserules.admin`) — FirestoreルールとStorageルールは同じ「Firebase Rules」APIの管轄なので、これ1つで両方をカバーします
+   - **Service Usage Consumer** (`roles/serviceusage.serviceUsageConsumer`) — 近年のfirebase-toolsではサービスアカウントでのデプロイに必須です
+
+### 3. GitHubリポジトリにシークレットを登録
+
+1. リポジトリの **Settings → Secrets and variables → Actions** → 「New repository secret」
+2. Name: `FIREBASE_SERVICE_ACCOUNT`
+3. Value: 手順1でダウンロードしたJSONファイルの中身をまるごと貼り付け（このJSONはClaudeとのチャットを経由せず、GitHubの画面に直接貼ってください）
+
+プロジェクトIDはこのJSON内の `project_id` からワークフローが自動的に読み取るため、別途シークレットを登録する必要はありません。
+
+登録が完了すると、`.github/workflows/deploy-firebase-rules.yml` により、`firestore.rules`・`storage.rules`・`firebase.json` のいずれかを変更してpushするたびに自動でFirebaseへデプロイされます。`Actions` タブから手動実行（`workflow_dispatch`）することも可能です。

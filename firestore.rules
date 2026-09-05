@@ -1,0 +1,64 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() { return request.auth != null; }
+    function isAnonymous() { return request.auth.token.firebase.sign_in_provider == 'anonymous'; }
+    function isAdminEmail() {
+      return isSignedIn() && !isAnonymous() &&
+        exists(/databases/$(database)/documents/appSettings/general) &&
+        (request.auth.token.email.lower() in
+          get(/databases/$(database)/documents/appSettings/general).data.adminEmails);
+    }
+
+    // 連絡ノート・掲示板・マニュアル・チャット・忘れ物・トレーニング管理・アプリ設定
+    // (匿名端末を含む全ログイン済み端末で共有)
+    match /notebookEntries/{id} { allow read, write: if isSignedIn(); }
+    match /bulletinPosts/{id} { allow read, write: if isSignedIn(); }
+    match /bulletinAcks/{id} { allow read, write: if isSignedIn(); }
+    match /manuals/{id} { allow read, write: if isSignedIn(); }
+    match /chatMessages/{id} { allow read, write: if isSignedIn(); }
+    match /lostItems/{id} { allow read, write: if isSignedIn(); }
+    match /trainingSteps/{id} { allow read, write: if isSignedIn(); }
+    match /trainingCompletions/{id} { allow read, write: if isSignedIn(); }
+    match /appSettings/{id} { allow read, write: if isSignedIn(); }
+
+    // 管理者チャット用: 本人のプロフィール (自分のuidの行だけ本人が作成・更新可)
+    match /staffProfiles/{uid} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && !isAnonymous() && request.auth.uid == uid;
+    }
+
+    // 管理者チャット用: 本人のスレッドのみ本人が、全スレッドは管理者メールのみ閲覧・返信可
+    match /dmChannels/{staffUid} {
+      allow read, write: if isSignedIn() && !isAnonymous() &&
+        (request.auth.uid == staffUid || isAdminEmail());
+
+      match /messages/{msgId} {
+        allow read: if isSignedIn() && !isAnonymous() &&
+          (request.auth.uid == staffUid || isAdminEmail());
+        allow create: if isSignedIn() && !isAnonymous() &&
+          (request.auth.uid == staffUid || isAdminEmail()) &&
+          request.resource.data.senderUid == request.auth.uid;
+        allow update, delete: if false;
+      }
+
+      // ビデオ通話のシグナリング (発信・応答・ICE候補のやり取り)
+      match /calls/{callId} {
+        allow read, create, update: if isSignedIn() && !isAnonymous() &&
+          (request.auth.uid == staffUid || isAdminEmail());
+        allow delete: if false;
+
+        match /callerCandidates/{cid} {
+          allow read, create: if isSignedIn() && !isAnonymous() &&
+            (request.auth.uid == staffUid || isAdminEmail());
+          allow update, delete: if false;
+        }
+        match /calleeCandidates/{cid} {
+          allow read, create: if isSignedIn() && !isAnonymous() &&
+            (request.auth.uid == staffUid || isAdminEmail());
+          allow update, delete: if false;
+        }
+      }
+    }
+  }
+}
