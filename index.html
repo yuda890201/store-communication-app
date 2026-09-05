@@ -202,6 +202,7 @@
       <div class="view-title">📝 連絡ノート</div>
       <button class="settings-btn" onclick="openSideDrawer()">⚙️</button>
     </div>
+    <div class="status" id="notebookStoreContext"></div>
     <div class="card">
       <label for="notebookInput">新しい連絡を書く</label>
       <textarea id="notebookInput" rows="3" placeholder="例: 本日14時に業者が来店予定です"></textarea>
@@ -226,7 +227,15 @@
         <input type="checkbox" id="bulletinRequiresAck" style="width: auto; margin: 0;">
         要確認にする（全員に既読サインを求める）
       </label>
+      <label for="bulletinStoreTags">対象店舗（複数選択可・未選択は全店共通）</label>
+      <select id="bulletinStoreTags" multiple size="3"></select>
       <button class="btn-primary" onclick="addBulletinPost()">📌 掲示板に投稿</button>
+    </div>
+    <div class="card">
+      <label for="bulletinFilterStore">店舗で絞り込み</label>
+      <select id="bulletinFilterStore" onchange="renderBulletinList()" style="margin-bottom: 0;">
+        <option value="">すべて表示</option>
+      </select>
     </div>
     <div id="bulletinList"></div>
   </div>
@@ -260,6 +269,7 @@
       <div class="view-title">💬 チャットルーム</div>
       <button class="settings-btn" onclick="openSideDrawer()">⚙️</button>
     </div>
+    <div class="status" id="chatStoreContext"></div>
     <div class="card">
       <div id="chatMessageList" class="chat-container"></div>
       <div class="add-input-group">
@@ -276,6 +286,7 @@
       <div class="view-title">🎒 忘れ物管理台帳</div>
       <button class="settings-btn" onclick="openSideDrawer()">⚙️</button>
     </div>
+    <div class="status" id="lostStoreContext"></div>
     <details>
       <summary>➕ 拾得物を登録</summary>
       <div style="margin-top: 10px;">
@@ -309,9 +320,17 @@
       <div style="margin-top: 10px;">
         <label for="trainingStepInput">ステップ名</label>
         <input type="text" id="trainingStepInput" placeholder="例: レジ操作の基本">
+        <label for="trainingStoreTags">対象店舗（複数選択可・未選択は全店共通）</label>
+        <select id="trainingStoreTags" multiple size="3"></select>
         <button class="btn-primary" onclick="addTrainingStep()">➕ ステップを追加</button>
       </div>
     </details>
+    <div class="card">
+      <label for="trainingFilterStore">店舗で絞り込み</label>
+      <select id="trainingFilterStore" onchange="renderTrainingStepList()" style="margin-bottom: 0;">
+        <option value="">すべて表示</option>
+      </select>
+    </div>
     <div id="trainingStepList"></div>
   </div>
 
@@ -322,6 +341,7 @@
       <div class="view-title">🧾 店控え書類の保管</div>
       <button class="settings-btn" onclick="openSideDrawer()">⚙️</button>
     </div>
+    <div class="status" id="docStoreContext"></div>
     <p class="status">この端末内にのみ保存され、他の端末やクラウドには送信されません。端末の故障・初期化に備え、下部の「まとめてダウンロード」から定期的にバックアップしてください。</p>
 
     <div class="card">
@@ -474,6 +494,24 @@
       </div>
     </details>
 
+    <details open>
+      <summary>🏪 店舗設定（複数店舗運用）</summary>
+      <div style="margin-top: 10px;">
+        <p style="font-size: 0.8rem; color: #666;">複数店舗で共有運用する場合の設定です。店舗一覧はオーナーがここで登録します。連絡ノート・忘れ物・チャット・店控えは「現在の店舗」に投稿され、通常はその店舗の分だけ表示されます（掲示板・トレーニング・マニュアルは全店共通です）。</p>
+        <label for="storesInput">店舗一覧（1行に1店舗）</label>
+        <textarea id="storesInput" rows="3" placeholder="例: 渋谷店"></textarea>
+        <button class="btn-secondary" onclick="saveStores()">💾 保存</button>
+
+        <label for="activeStoreSelect" style="margin-top: 14px;">現在の店舗（この端末での投稿・表示対象）</label>
+        <select id="activeStoreSelect" onchange="saveActiveStore()"></select>
+
+        <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; font-size: 0.85rem; margin-top: 8px;">
+          <input type="checkbox" id="showAllStoresCheckbox" style="width: auto; margin: 0;" onchange="saveShowAllStores()">
+          🌐 他店舗の投稿・記録も表示する（連絡ノート・忘れ物・チャット・店控え）
+        </label>
+      </div>
+    </details>
+
     <details>
       <summary>🎓 トレーニング機能の名称</summary>
       <div style="margin-top: 10px;">
@@ -580,6 +618,11 @@
       const savedName = localStorage.getItem('my_name');
       if (savedName) document.getElementById('myNameInput').value = savedName;
 
+      activeStore = localStorage.getItem('active_store') || '';
+      showAllStores = localStorage.getItem('show_all_stores') === '1';
+      document.getElementById('showAllStoresCheckbox').checked = showAllStores;
+      updateStoreContextLabels();
+
       const savedFirebaseConfig = localStorage.getItem('firebase_config');
       if (savedFirebaseConfig) document.getElementById('firebaseConfig').value = savedFirebaseConfig;
 
@@ -611,6 +654,10 @@
     let db = null;
     let storage = null;
     let firebaseReady = false;
+
+    let storesList = [];
+    let activeStore = '';
+    let showAllStores = false;
 
     let notebookEntries = [];
     let bulletinPosts = [];
@@ -718,6 +765,14 @@
         if (!inviteCodeInput.dataset.userEdited) {
           inviteCodeInput.value = data.staffInviteCode || '';
         }
+
+        storesList = Array.isArray(data.stores) ? data.stores : [];
+        const storesInput = document.getElementById('storesInput');
+        if (!storesInput.dataset.userEdited) {
+          storesInput.value = storesList.join('\n');
+        }
+        renderStoreSelectOptions();
+
         renderAdminChatUI();
       });
 
@@ -787,14 +842,117 @@
       db.collection('appSettings').doc('general').set({ staffInviteCode: code }, { merge: true });
     }
 
+    // ===== 店舗設定 (複数店舗運用) =====
+    function saveStores() {
+      if (!requireDb()) return;
+      const input = document.getElementById('storesInput');
+      const stores = input.value.split('\n').map(s => s.trim()).filter(Boolean);
+      input.dataset.userEdited = '1';
+      db.collection('appSettings').doc('general').set({ stores }, { merge: true });
+    }
+
+    function saveActiveStore() {
+      activeStore = document.getElementById('activeStoreSelect').value;
+      localStorage.setItem('active_store', activeStore);
+      updateStoreContextLabels();
+      renderNotebookList();
+      renderLostList();
+      renderChatMessages();
+      renderDocList();
+    }
+
+    function saveShowAllStores() {
+      showAllStores = document.getElementById('showAllStoresCheckbox').checked;
+      localStorage.setItem('show_all_stores', showAllStores ? '1' : '0');
+      updateStoreContextLabels();
+      renderNotebookList();
+      renderLostList();
+      renderChatMessages();
+      renderDocList();
+    }
+
+    function updateStoreContextLabels() {
+      const label = activeStore
+        ? `📍 ${activeStore}${showAllStores ? '（＋他店舗も表示中）' : ''}`
+        : '⚠️ 店舗未設定です。⚙️設定の「店舗設定」で店舗を登録してください';
+      ['notebookStoreContext', 'lostStoreContext', 'chatStoreContext', 'docStoreContext'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerText = label;
+      });
+    }
+
+    function requireActiveStore() {
+      if (!activeStore) {
+        alert('店舗が未設定です。⚙️設定の「店舗設定」で店舗を登録し、現在の店舗を選んでください。');
+        return false;
+      }
+      return true;
+    }
+
+    function visibleForActiveStore(items) {
+      if (showAllStores) return items;
+      return items.filter(item => item.store === activeStore);
+    }
+
+    function getSelectedOptions(selectEl) {
+      return Array.from(selectEl.selectedOptions).map(o => o.value);
+    }
+
+    function populateStoreSelect(selectEl, { multiple = false, filterMode = false } = {}) {
+      const previous = multiple ? getSelectedOptions(selectEl) : selectEl.value;
+      const keepFirstOption = filterMode ? selectEl.firstElementChild : null;
+      selectEl.innerHTML = '';
+      if (keepFirstOption) selectEl.appendChild(keepFirstOption);
+
+      storesList.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.innerText = name;
+        selectEl.appendChild(opt);
+      });
+
+      if (multiple) {
+        Array.from(selectEl.options).forEach(o => { o.selected = previous.includes(o.value); });
+      } else if (Array.from(selectEl.options).some(o => o.value === previous)) {
+        selectEl.value = previous;
+      }
+    }
+
+    function renderStoreSelectOptions() {
+      const activeSelect = document.getElementById('activeStoreSelect');
+      if (!activeSelect) return;
+
+      if (storesList.length === 0) {
+        activeSelect.innerHTML = '<option value="">（店舗未登録）</option>';
+        activeSelect.disabled = true;
+      } else {
+        activeSelect.disabled = false;
+        if (!storesList.includes(activeStore)) {
+          activeStore = storesList[0];
+          localStorage.setItem('active_store', activeStore);
+        }
+        populateStoreSelect(activeSelect);
+        activeSelect.value = activeStore;
+      }
+      updateStoreContextLabels();
+
+      populateStoreSelect(document.getElementById('bulletinStoreTags'), { multiple: true });
+      populateStoreSelect(document.getElementById('trainingStoreTags'), { multiple: true });
+      populateStoreSelect(document.getElementById('bulletinFilterStore'), { filterMode: true });
+      populateStoreSelect(document.getElementById('trainingFilterStore'), { filterMode: true });
+
+      renderBulletinList();
+      renderTrainingStepList();
+    }
+
     // ===== 連絡ノート =====
     function addNotebookEntry() {
-      if (!requireDb()) return;
+      if (!requireDb() || !requireActiveStore()) return;
       const input = document.getElementById('notebookInput');
       const text = input.value.trim();
       if (!text) return;
       db.collection('notebookEntries').add({
-        text, author: getMyName(),
+        text, author: getMyName(), store: activeStore,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       input.value = '';
@@ -808,18 +966,19 @@
     function renderNotebookList() {
       const container = document.getElementById('notebookList');
       if (!container) return;
-      if (notebookEntries.length === 0) {
+      const visible = visibleForActiveStore(notebookEntries);
+      if (visible.length === 0) {
         container.innerHTML = '<div class="empty-state">連絡ノートはまだありません</div>';
         return;
       }
       container.innerHTML = '';
-      notebookEntries.forEach(e => {
+      visible.forEach(e => {
         const card = document.createElement('div');
         card.className = 'card';
 
         const meta = document.createElement('div');
         meta.className = 'entry-meta';
-        meta.innerText = [formatEntryTime(e), e.author].filter(Boolean).join(' ・ ');
+        meta.innerText = [formatEntryTime(e), showAllStores ? e.store : '', e.author].filter(Boolean).join(' ・ ');
         card.appendChild(meta);
 
         const body = document.createElement('div');
@@ -846,16 +1005,19 @@
       const titleInput = document.getElementById('bulletinTitleInput');
       const bodyInput = document.getElementById('bulletinBodyInput');
       const ackInput = document.getElementById('bulletinRequiresAck');
+      const storeTagsSelect = document.getElementById('bulletinStoreTags');
       const title = titleInput.value.trim();
       const body = bodyInput.value.trim();
       if (!title && !body) return;
       db.collection('bulletinPosts').add({
         title, body, pinned: false, requiresAck: ackInput.checked, author: getMyName(),
+        storeTags: getSelectedOptions(storeTagsSelect),
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       titleInput.value = '';
       bodyInput.value = '';
       ackInput.checked = false;
+      Array.from(storeTagsSelect.options).forEach(o => { o.selected = false; });
     }
 
     function toggleBulletinPin(id, pinned) {
@@ -883,14 +1045,19 @@
 
     function renderBulletinList() {
       const container = document.getElementById('bulletinList');
-      if (!container) return;
-      if (bulletinPosts.length === 0) {
+      const filterSelect = document.getElementById('bulletinFilterStore');
+      if (!container || !filterSelect) return;
+      const filterVal = filterSelect.value;
+      const filtered = filterVal
+        ? bulletinPosts.filter(p => !p.storeTags || p.storeTags.length === 0 || p.storeTags.includes(filterVal))
+        : bulletinPosts;
+      if (filtered.length === 0) {
         container.innerHTML = '<div class="empty-state">掲示板の投稿はまだありません</div>';
         return;
       }
       container.innerHTML = '';
       const myName = getMyName();
-      const sorted = [...bulletinPosts].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+      const sorted = [...filtered].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
       sorted.forEach(p => {
         const card = document.createElement('div');
         card.className = 'card';
@@ -902,6 +1069,14 @@
           const badge = document.createElement('span');
           badge.className = 'pin-badge';
           badge.innerText = '📌 固定';
+          titleRow.appendChild(badge);
+        }
+        if (p.storeTags && p.storeTags.length > 0) {
+          const badge = document.createElement('span');
+          badge.className = 'pin-badge';
+          badge.style.background = '#e0e0e0';
+          badge.style.color = '#444';
+          badge.innerText = '🏪 ' + p.storeTags.join('・');
           titleRow.appendChild(badge);
         }
         if (p.requiresAck) {
@@ -1043,12 +1218,12 @@
 
     // ===== チャットルーム =====
     function sendChatMessage() {
-      if (!requireDb()) return;
+      if (!requireDb() || !requireActiveStore()) return;
       const input = document.getElementById('chatMessageInput');
       const text = input.value.trim();
       if (!text) return;
       db.collection('chatMessages').add({
-        text, sender: getMyName(),
+        text, sender: getMyName(), store: activeStore,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       input.value = '';
@@ -1058,14 +1233,15 @@
       const container = document.getElementById('chatMessageList');
       if (!container) return;
 
-      if (chatMessages.length === 0) {
+      const visible = visibleForActiveStore(chatMessages);
+      if (visible.length === 0) {
         container.innerHTML = '<div class="empty-state">まだメッセージはありません</div>';
         return;
       }
 
       const myName = getMyName();
       container.innerHTML = '';
-      chatMessages.forEach(m => {
+      visible.forEach(m => {
         const isMine = m.sender === myName;
         const wrap = document.createElement('div');
         wrap.className = 'chat-bubble-wrap' + (isMine ? ' mine' : '');
@@ -1073,7 +1249,7 @@
         if (!isMine) {
           const senderLabel = document.createElement('div');
           senderLabel.className = 'chat-sender-label';
-          senderLabel.innerText = m.sender || 'スタッフ';
+          senderLabel.innerText = (m.sender || 'スタッフ') + (showAllStores && m.store ? ` (${m.store})` : '');
           wrap.appendChild(senderLabel);
         }
 
@@ -1089,7 +1265,7 @@
 
     // ===== 忘れ物管理台帳 =====
     async function addLostItem() {
-      if (!requireDb()) return;
+      if (!requireDb() || !requireActiveStore()) return;
       const titleInput = document.getElementById('lostTitleInput');
       const descInput = document.getElementById('lostDescInput');
       const locationInput = document.getElementById('lostLocationInput');
@@ -1107,6 +1283,7 @@
         foundDate: dateInput.value || '',
         status: 'stored',
         photoUrl: '',
+        store: activeStore,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       };
 
@@ -1163,12 +1340,13 @@
     function renderLostList() {
       const container = document.getElementById('lostList');
       if (!container) return;
-      if (lostItems.length === 0) {
+      const visible = visibleForActiveStore(lostItems);
+      if (visible.length === 0) {
         container.innerHTML = '<div class="empty-state">忘れ物の記録はまだありません</div>';
         return;
       }
       container.innerHTML = '';
-      lostItems.forEach(item => {
+      visible.forEach(item => {
         const card = document.createElement('div');
         card.className = 'card';
 
@@ -1193,6 +1371,7 @@
         const meta = document.createElement('div');
         meta.className = 'entry-meta';
         const metaParts = [];
+        if (showAllStores && item.store) metaParts.push('🏪 ' + item.store);
         if (item.foundDate) metaParts.push('発見日: ' + item.foundDate);
         if (item.foundLocation) metaParts.push('場所: ' + item.foundLocation);
         meta.innerText = metaParts.join(' ・ ');
@@ -1242,12 +1421,15 @@
     function addTrainingStep() {
       if (!requireDb()) return;
       const input = document.getElementById('trainingStepInput');
+      const storeTagsSelect = document.getElementById('trainingStoreTags');
       const title = input.value.trim();
       if (!title) return;
       db.collection('trainingSteps').add({
-        title, createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        title, storeTags: getSelectedOptions(storeTagsSelect),
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       input.value = '';
+      Array.from(storeTagsSelect.options).forEach(o => { o.selected = false; });
     }
 
     function deleteTrainingStep(id) {
@@ -1276,14 +1458,19 @@
 
     function renderTrainingStepList() {
       const container = document.getElementById('trainingStepList');
-      if (!container) return;
-      if (trainingSteps.length === 0) {
+      const filterSelect = document.getElementById('trainingFilterStore');
+      if (!container || !filterSelect) return;
+      const filterVal = filterSelect.value;
+      const filtered = filterVal
+        ? trainingSteps.filter(s => !s.storeTags || s.storeTags.length === 0 || s.storeTags.includes(filterVal))
+        : trainingSteps;
+      if (filtered.length === 0) {
         container.innerHTML = '<div class="empty-state">ステップはまだ登録されていません</div>';
         return;
       }
       container.innerHTML = '';
       const myName = getMyName();
-      trainingSteps.forEach(step => {
+      filtered.forEach(step => {
         const completions = completionsForStep(step.id);
         const iCompleted = completions.some(c => c.staffName === myName);
 
@@ -1293,6 +1480,9 @@
         const title = document.createElement('div');
         title.className = 'step-title';
         title.innerText = step.title;
+        if (step.storeTags && step.storeTags.length > 0) {
+          title.innerText += '  🏪 ' + step.storeTags.join('・');
+        }
         row.appendChild(title);
 
         const progress = document.createElement('div');
@@ -1415,6 +1605,7 @@
     async function handleDocFiles(fileList) {
       const files = Array.from(fileList || []);
       if (files.length === 0) return;
+      if (!requireActiveStore()) return;
       const statusEl = document.getElementById('docSaveStatus');
       const memo = document.getElementById('docMemoInput').value.trim();
       const date = document.getElementById('docDateInput').value || new Date().toISOString().slice(0, 10);
@@ -1428,6 +1619,7 @@
           fileName: `${date}_${id}.${extFromMime(file.type)}`,
           mimeType: file.type || 'image/jpeg',
           blob: file,
+          store: activeStore,
           createdAt: Date.now()
         };
         await addDocRecord(record);
@@ -1449,7 +1641,8 @@
       const container = document.getElementById('docList');
       if (!container) return;
       revokeDocObjectUrls();
-      const records = await getAllDocRecords();
+      const allRecords = await getAllDocRecords();
+      const records = visibleForActiveStore(allRecords);
       if (records.length === 0) {
         container.innerHTML = '<div class="empty-state">保管されている書類はまだありません</div>';
         return;
@@ -1477,10 +1670,10 @@
           img.src = url;
           img.alt = r.memo || r.fileName;
           thumb.appendChild(img);
-          if (r.memo) {
+          if (r.memo || (showAllStores && r.store)) {
             const memoLabel = document.createElement('div');
             memoLabel.className = 'doc-thumb-memo';
-            memoLabel.innerText = r.memo;
+            memoLabel.innerText = [showAllStores ? r.store : '', r.memo].filter(Boolean).join(' ・ ');
             thumb.appendChild(memoLabel);
           }
           thumb.onclick = () => openDocViewer(r.id, url);
@@ -1625,7 +1818,7 @@
         });
         if (!isRegisteringAsAdmin) {
           await db.collection('dmChannels').doc(cred.user.uid).set({
-            staffUid: cred.user.uid, staffName: name, staffEmail: email,
+            staffUid: cred.user.uid, staffName: name, staffEmail: email, store: activeStore,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             lastMessageAt: firebase.firestore.FieldValue.serverTimestamp(),
             lastMessageText: ''
@@ -1688,7 +1881,7 @@
 
         const title = document.createElement('div');
         title.className = 'item-title';
-        title.innerText = ch.staffName || ch.staffEmail || '(不明なスタッフ)';
+        title.innerText = (ch.staffName || ch.staffEmail || '(不明なスタッフ)') + (ch.store ? `　🏪 ${ch.store}` : '');
         row.appendChild(title);
 
         const preview = document.createElement('div');
