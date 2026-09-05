@@ -41,6 +41,11 @@
     .app-title { font-size: 1.3rem; font-weight: bold; }
     .home-sub { font-size: 0.8rem; color: #777; margin-bottom: 16px; }
     .settings-btn { background: white; border: 1px solid #e1e4e8; border-radius: 10px; padding: 9px 12px; font-size: 1.05rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .store-switch-btn { background: #e7f1ff; color: #0d6efd; border: 1px solid #bcd8ff; border-radius: 20px; padding: 6px 14px; font-size: 0.85rem; font-weight: bold; margin-bottom: 10px; }
+
+    /* ===== 店舗選択モーダル ===== */
+    .store-option-btn { display: block; width: 100%; background: #f4f6f8; border: 1px solid #dde2eb; color: #1a2233; padding: 14px; border-radius: 10px; font-size: 1rem; font-weight: bold; text-align: left; margin-bottom: 8px; }
+    .store-option-btn.current { background: #e7f1ff; border-color: #0d6efd; color: #0d6efd; }
 
     .home-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .grid-card { background: white; border: 1px solid #e1e4e8; border-radius: 14px; padding: 22px 10px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
@@ -149,6 +154,7 @@
       <div class="app-title">🏪 店舗コミュニケーション</div>
       <button class="settings-btn" onclick="openSideDrawer()">⚙️</button>
     </div>
+    <button class="store-switch-btn" id="storeSwitchBtn" onclick="openStorePickerModal()">📍 店舗未設定 ▾</button>
     <div class="home-sub" id="dbStatusHome">未接続</div>
 
     <div class="home-grid">
@@ -446,6 +452,18 @@
     </div>
   </div>
 
+  <!-- ===== 店舗選択モーダル ===== -->
+  <div id="storePickerOverlay" class="sig-overlay">
+    <div class="sig-modal">
+      <h2>📍 どの店舗ですか？</h2>
+      <div class="sig-hint">連絡ノート・忘れ物・チャット・店控えはこの店舗に記録されます</div>
+      <div id="storePickerList"></div>
+      <div class="sig-actions">
+        <button class="btn-clear" id="storePickerCloseBtn" onclick="closeStorePickerModal()">閉じる</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== 着信バナー ===== -->
   <div id="incomingCallOverlay" class="sig-overlay">
     <div class="sig-modal">
@@ -472,7 +490,7 @@
     </div>
   </div>
 
-  <!-- ===== 設定サイドパネル ===== -->
+  <!-- ===== 設定サイドパネル (スタッフ向け) ===== -->
   <div id="sideDrawerOverlay" class="side-drawer-overlay" onclick="closeSideDrawer()"></div>
   <div id="sideDrawer" class="side-drawer">
     <div class="side-drawer-header">
@@ -495,20 +513,35 @@
     </details>
 
     <details open>
-      <summary>🏪 店舗設定（複数店舗運用）</summary>
+      <summary>🌐 表示設定</summary>
       <div style="margin-top: 10px;">
-        <p style="font-size: 0.8rem; color: #666;">複数店舗で共有運用する場合の設定です。店舗一覧はオーナーがここで登録します。連絡ノート・忘れ物・チャット・店控えは「現在の店舗」に投稿され、通常はその店舗の分だけ表示されます（掲示板・トレーニング・マニュアルは全店共通です）。</p>
-        <label for="storesInput">店舗一覧（1行に1店舗）</label>
-        <textarea id="storesInput" rows="3" placeholder="例: 渋谷店"></textarea>
-        <button class="btn-secondary" onclick="saveStores()">💾 保存</button>
-
-        <label for="activeStoreSelect" style="margin-top: 14px;">現在の店舗（この端末での投稿・表示対象）</label>
-        <select id="activeStoreSelect" onchange="saveActiveStore()"></select>
-
-        <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; font-size: 0.85rem; margin-top: 8px;">
+        <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; font-size: 0.85rem;">
           <input type="checkbox" id="showAllStoresCheckbox" style="width: auto; margin: 0;" onchange="saveShowAllStores()">
           🌐 他店舗の投稿・記録も表示する（連絡ノート・忘れ物・チャット・店控え）
         </label>
+        <p style="font-size: 0.8rem; color: #666; margin-top: 8px;">現在の店舗はホーム画面の「📍」ボタンから切り替えられます。</p>
+      </div>
+    </details>
+
+    <button class="btn-clear" style="width: 100%; margin-top: 8px;" onclick="openOwnerDrawer()">🔒 オーナー設定を開く</button>
+  </div>
+
+  <!-- ===== オーナー設定パネル ===== -->
+  <div id="ownerDrawerOverlay" class="side-drawer-overlay" onclick="closeOwnerDrawer()"></div>
+  <div id="ownerDrawer" class="side-drawer">
+    <div class="side-drawer-header">
+      <h2>🔒 オーナー設定</h2>
+      <button class="side-drawer-close-btn" onclick="closeOwnerDrawer()">✕</button>
+    </div>
+    <p style="font-size: 0.8rem; color: #666; margin: -6px 0 14px;">店舗一覧・機能名称・管理者権限・Firebase接続など、お店全体に影響する設定です。通常はオーナーのみが操作してください。</p>
+
+    <details open>
+      <summary>🏪 店舗一覧（複数店舗運用）</summary>
+      <div style="margin-top: 10px;">
+        <p style="font-size: 0.8rem; color: #666;">複数店舗で共有運用する場合、ここで店舗名を登録します。各スタッフはホーム画面の「📍」ボタンやアプリ起動時のモーダルで、自分がいる店舗を選びます。</p>
+        <label for="storesInput">店舗一覧（1行に1店舗）</label>
+        <textarea id="storesInput" rows="3" placeholder="例: 渋谷店"></textarea>
+        <button class="btn-secondary" onclick="saveStores()">💾 保存</button>
       </div>
     </details>
 
@@ -606,6 +639,16 @@
       document.getElementById('sideDrawerOverlay').classList.remove('open');
     }
 
+    function openOwnerDrawer() {
+      document.getElementById('ownerDrawer').classList.add('open');
+      document.getElementById('ownerDrawerOverlay').classList.add('open');
+    }
+
+    function closeOwnerDrawer() {
+      document.getElementById('ownerDrawer').classList.remove('open');
+      document.getElementById('ownerDrawerOverlay').classList.remove('open');
+    }
+
     function saveMyName() {
       localStorage.setItem('my_name', document.getElementById('myNameInput').value.trim());
     }
@@ -622,6 +665,7 @@
       showAllStores = localStorage.getItem('show_all_stores') === '1';
       document.getElementById('showAllStoresCheckbox').checked = showAllStores;
       updateStoreContextLabels();
+      updateStoreSwitchButton();
 
       const savedFirebaseConfig = localStorage.getItem('firebase_config');
       if (savedFirebaseConfig) document.getElementById('firebaseConfig').value = savedFirebaseConfig;
@@ -658,6 +702,7 @@
     let storesList = [];
     let activeStore = '';
     let showAllStores = false;
+    let storePickerShownThisLoad = false;
 
     let notebookEntries = [];
     let bulletinPosts = [];
@@ -851,14 +896,54 @@
       db.collection('appSettings').doc('general').set({ stores }, { merge: true });
     }
 
-    function saveActiveStore() {
-      activeStore = document.getElementById('activeStoreSelect').value;
-      localStorage.setItem('active_store', activeStore);
+    function chooseStore(name) {
+      activeStore = name;
+      localStorage.setItem('active_store', name);
       updateStoreContextLabels();
+      updateStoreSwitchButton();
       renderNotebookList();
       renderLostList();
       renderChatMessages();
       renderDocList();
+      closeStorePickerModal();
+    }
+
+    function openStorePickerModal() {
+      renderStorePickerList();
+      document.getElementById('storePickerCloseBtn').style.display = activeStore ? 'inline-flex' : 'none';
+      document.getElementById('storePickerOverlay').classList.add('open');
+    }
+
+    function closeStorePickerModal() {
+      document.getElementById('storePickerOverlay').classList.remove('open');
+    }
+
+    function renderStorePickerList() {
+      const container = document.getElementById('storePickerList');
+      if (!container) return;
+      if (storesList.length === 0) {
+        container.innerHTML = '<div class="empty-state">店舗が登録されていません。⚙️→🔒オーナー設定での登録をオーナーに依頼してください。</div>';
+        return;
+      }
+      container.innerHTML = '';
+      storesList.forEach(name => {
+        const btn = document.createElement('button');
+        btn.className = 'store-option-btn' + (name === activeStore ? ' current' : '');
+        btn.innerText = (name === activeStore ? '✅ ' : '') + name;
+        btn.onclick = () => chooseStore(name);
+        container.appendChild(btn);
+      });
+    }
+
+    function maybeShowStorePickerOnLoad() {
+      if (storePickerShownThisLoad) return;
+      if (storesList.length === 0) return;
+      storePickerShownThisLoad = true;
+      if (storesList.length === 1) {
+        if (activeStore !== storesList[0]) chooseStore(storesList[0]);
+        return;
+      }
+      openStorePickerModal();
     }
 
     function saveShowAllStores() {
@@ -874,16 +959,22 @@
     function updateStoreContextLabels() {
       const label = activeStore
         ? `📍 ${activeStore}${showAllStores ? '（＋他店舗も表示中）' : ''}`
-        : '⚠️ 店舗未設定です。⚙️設定の「店舗設定」で店舗を登録してください';
+        : '⚠️ 店舗未設定です。ホーム画面の「📍」ボタンから選んでください';
       ['notebookStoreContext', 'lostStoreContext', 'chatStoreContext', 'docStoreContext'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.innerText = label;
       });
     }
 
+    function updateStoreSwitchButton() {
+      const btn = document.getElementById('storeSwitchBtn');
+      if (!btn) return;
+      btn.innerText = activeStore ? `📍 ${activeStore} ▾` : (storesList.length > 0 ? '📍 店舗を選択 ▾' : '📍 店舗未設定');
+    }
+
     function requireActiveStore() {
       if (!activeStore) {
-        alert('店舗が未設定です。⚙️設定の「店舗設定」で店舗を登録し、現在の店舗を選んでください。');
+        alert('店舗が未設定です。ホーム画面の「📍」ボタンから店舗を選んでください。');
         return false;
       }
       return true;
@@ -919,22 +1010,12 @@
     }
 
     function renderStoreSelectOptions() {
-      const activeSelect = document.getElementById('activeStoreSelect');
-      if (!activeSelect) return;
-
-      if (storesList.length === 0) {
-        activeSelect.innerHTML = '<option value="">（店舗未登録）</option>';
-        activeSelect.disabled = true;
-      } else {
-        activeSelect.disabled = false;
-        if (!storesList.includes(activeStore)) {
-          activeStore = storesList[0];
-          localStorage.setItem('active_store', activeStore);
-        }
-        populateStoreSelect(activeSelect);
-        activeSelect.value = activeStore;
+      if (storesList.length > 0 && activeStore && !storesList.includes(activeStore)) {
+        activeStore = '';
+        localStorage.removeItem('active_store');
       }
       updateStoreContextLabels();
+      updateStoreSwitchButton();
 
       populateStoreSelect(document.getElementById('bulletinStoreTags'), { multiple: true });
       populateStoreSelect(document.getElementById('trainingStoreTags'), { multiple: true });
@@ -943,6 +1024,8 @@
 
       renderBulletinList();
       renderTrainingStepList();
+
+      maybeShowStorePickerOnLoad();
     }
 
     // ===== 連絡ノート =====
