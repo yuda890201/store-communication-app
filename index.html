@@ -127,6 +127,18 @@
     .auth-tab-btn.active { background: #007bff; color: white; border-color: #007bff; }
     .dm-attachment-img { max-width: 220px; max-height: 220px; border-radius: 8px; margin-top: 4px; cursor: pointer; display: block; object-fit: cover; }
     .dm-attachment-file { display: inline-block; background: white; border: 1px solid #ccc; padding: 6px 10px; border-radius: 8px; font-size: 0.8rem; margin-top: 4px; color: #333; text-decoration: none; }
+
+    /* ===== ビデオ通話 (WebRTC、無料枠のみ・TURNサーバーなしのプロトタイプ) ===== */
+    .call-overlay-full { padding: 0; }
+    .call-modal { position: relative; width: 100%; height: 100%; max-height: none; background: #111; border-radius: 0; padding: 0; overflow: hidden; }
+    .call-status-text { position: absolute; top: 16px; left: 0; right: 0; text-align: center; color: white; font-size: 0.95rem; z-index: 2; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+    .remote-video { width: 100%; height: 100%; object-fit: cover; background: #222; display: block; }
+    .local-video { position: absolute; bottom: 96px; right: 14px; width: 100px; height: 136px; object-fit: cover; border-radius: 10px; border: 2px solid white; background: #333; z-index: 2; }
+    .call-controls { position: absolute; bottom: 22px; left: 0; right: 0; display: flex; justify-content: center; gap: 18px; z-index: 2; }
+    .call-ctrl-btn { width: 54px; height: 54px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; font-size: 1.3rem; border: none; padding: 0; }
+    .call-ctrl-btn.off { background: rgba(220,53,69,0.75); }
+    .call-ctrl-btn.call-hangup { background: #dc3545; }
+    .incoming-call-name { font-size: 1.05rem; font-weight: bold; margin: 6px 0 14px; }
   </style>
 </head>
 <body>
@@ -408,7 +420,35 @@
         📎 画像・ファイルを添付
         <input type="file" id="dmFileInput" hidden onchange="handleDmFileSelect(this.files)">
       </label>
+      <button class="btn-primary" style="width: 100%; margin-top: 8px; background: #6f42c1;" onclick="startCallFromThread()">📹 ビデオ通話を発信</button>
+      <div id="callStartStatus" class="status"></div>
       <button class="btn-clear" style="margin-top: 10px; width: 100%;" onclick="doLogout()">🚪 ログアウト</button>
+    </div>
+  </div>
+
+  <!-- ===== 着信バナー ===== -->
+  <div id="incomingCallOverlay" class="sig-overlay">
+    <div class="sig-modal">
+      <h2>📹 着信中...</h2>
+      <div class="incoming-call-name" id="incomingCallFrom"></div>
+      <div class="sig-actions">
+        <button class="btn-danger" onclick="declineIncomingCall()">拒否</button>
+        <button class="btn-success" style="margin-top: 0;" onclick="acceptIncomingCall()">応答する</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 通話画面 ===== -->
+  <div id="callOverlay" class="sig-overlay call-overlay-full">
+    <div class="call-modal">
+      <div class="call-status-text" id="callStatusText">発信中...</div>
+      <video id="remoteVideo" class="remote-video" autoplay playsinline></video>
+      <video id="localVideo" class="local-video" autoplay playsinline muted></video>
+      <div class="call-controls">
+        <button class="call-ctrl-btn" id="micToggleBtn" onclick="toggleMic()">🎤</button>
+        <button class="call-ctrl-btn" id="camToggleBtn" onclick="toggleCamera()">📷</button>
+        <button class="call-ctrl-btn call-hangup" onclick="hangUpCall()">📞</button>
+      </div>
     </div>
   </div>
 
@@ -559,6 +599,12 @@
       renderAdminChatUI();
       initFirebase();
       initSignaturePad();
+
+      window.addEventListener('beforeunload', () => {
+        if (callDocRef && activeCallId) {
+          callDocRef.update({ status: 'ended' }).catch(() => {});
+        }
+      });
     });
 
     // ===== Firebase (Firestore + Storage + 匿名認証) =====
@@ -1827,12 +1873,15 @@
         activeDmStaffUid = null;
         detachDmListener();
         ensureDmInboxSubscription();
+        ensureIncomingCallListener();
+        hangUpCall();
         return;
       }
 
       authPanel.style.display = 'none';
       isAdminUser = adminEmailsList.includes((currentUser.email || '').toLowerCase());
       ensureDmInboxSubscription();
+      ensureIncomingCallListener();
 
       if (isAdminUser) {
         if (activeDmStaffUid) {
@@ -1851,6 +1900,309 @@
         document.getElementById('dmBackToInboxBtn').style.display = 'none';
         attachDmListener(activeDmStaffUid);
       }
+    }
+
+    // ===== ビデオ通話 (WebRTC, 無料枠のみ・TURNサーバーなしのプロトタイプ) =====
+    // シグナリングは管理者チャットと同じ dmChannels/{staffUid} 配下の Firestore を使用。
+    // STUNのみでTURN中継を持たないため、回線環境によっては接続に失敗することがあります。
+    const ICE_SERVERS = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ]
+    };
+
+    let localStream = null;
+    let peerConnection = null;
+    let callDocRef = null;
+    let activeCallId = null;
+    let callRole = null; // 'caller' | 'callee'
+    let processedCandidateIds = new Set();
+    let callDocUnsub = null;
+    let remoteCandidatesUnsub = null;
+    let callTimeoutId = null;
+
+    let incomingCallUnsub = null;
+    let incomingCallDocUnsub = null;
+    let currentIncomingCall = null;
+    let ringToneTimer = null;
+    let ringAudioCtx = null;
+
+    function ensureIncomingCallListener() {
+      if (incomingCallUnsub) { incomingCallUnsub(); incomingCallUnsub = null; }
+      if (!currentUser || !db) return;
+
+      if (isAdminUser) {
+        incomingCallUnsub = db.collectionGroup('calls').where('status', '==', 'ringing')
+          .onSnapshot(snap => {
+            snap.docs.forEach(d => {
+              const call = d.data();
+              if (call.calleeRole === 'admin' && call.callerUid !== currentUser.uid) {
+                handleIncomingCallDoc(d);
+              }
+            });
+          }, () => {});
+      } else {
+        incomingCallUnsub = db.collection('dmChannels').doc(currentUser.uid).collection('calls')
+          .where('status', '==', 'ringing')
+          .onSnapshot(snap => {
+            snap.docs.forEach(d => {
+              const call = d.data();
+              if (call.calleeRole === 'staff' && call.callerUid !== currentUser.uid) {
+                handleIncomingCallDoc(d);
+              }
+            });
+          }, () => {});
+      }
+    }
+
+    function handleIncomingCallDoc(docSnap) {
+      if (currentIncomingCall || activeCallId) return;
+      const call = docSnap.data();
+      const staffUid = docSnap.ref.parent.parent.id;
+      currentIncomingCall = { callId: docSnap.id, staffUid, callerName: call.callerName || '相手', offer: call.offer, ref: docSnap.ref };
+      document.getElementById('incomingCallFrom').innerText = `${currentIncomingCall.callerName} さんから`;
+      document.getElementById('incomingCallOverlay').classList.add('open');
+      startRingTone();
+
+      if (incomingCallDocUnsub) incomingCallDocUnsub();
+      incomingCallDocUnsub = docSnap.ref.onSnapshot(liveDoc => {
+        if (!liveDoc.exists || liveDoc.data().status !== 'ringing') {
+          dismissIncomingCallBanner();
+        }
+      });
+    }
+
+    function dismissIncomingCallBanner() {
+      stopRingTone();
+      document.getElementById('incomingCallOverlay').classList.remove('open');
+      currentIncomingCall = null;
+      if (incomingCallDocUnsub) { incomingCallDocUnsub(); incomingCallDocUnsub = null; }
+    }
+
+    function startRingTone() {
+      stopRingTone();
+      try {
+        ringAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const beep = () => {
+          if (!ringAudioCtx) return;
+          const osc = ringAudioCtx.createOscillator();
+          const gain = ringAudioCtx.createGain();
+          osc.frequency.value = 880;
+          gain.gain.value = 0.15;
+          osc.connect(gain);
+          gain.connect(ringAudioCtx.destination);
+          osc.start();
+          osc.stop(ringAudioCtx.currentTime + 0.25);
+        };
+        beep();
+        ringToneTimer = setInterval(beep, 1000);
+      } catch (e) {}
+    }
+
+    function stopRingTone() {
+      if (ringToneTimer) { clearInterval(ringToneTimer); ringToneTimer = null; }
+      if (ringAudioCtx) { try { ringAudioCtx.close(); } catch (e) {} ringAudioCtx = null; }
+    }
+
+    function wirePeerConnectionEvents() {
+      peerConnection.ontrack = (event) => {
+        const remoteVideo = document.getElementById('remoteVideo');
+        if (remoteVideo.srcObject !== event.streams[0]) {
+          remoteVideo.srcObject = event.streams[0];
+        }
+      };
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate && callDocRef) {
+          const col = callRole === 'caller' ? callDocRef.collection('callerCandidates') : callDocRef.collection('calleeCandidates');
+          col.add(event.candidate.toJSON()).catch(() => {});
+        }
+      };
+      peerConnection.onconnectionstatechange = () => {
+        if (peerConnection && (peerConnection.connectionState === 'failed' || peerConnection.connectionState === 'disconnected')) {
+          document.getElementById('callStatusText').innerText = '接続が不安定です...（回線状況により切れることがあります）';
+        }
+      };
+    }
+
+    function watchCallDoc(ref, remoteRole) {
+      if (callDocUnsub) callDocUnsub();
+      callDocUnsub = ref.onSnapshot(async doc => {
+        if (!doc.exists) { endCallLocally(); return; }
+        const data = doc.data();
+        if (data.status === 'accepted' && data.answer && peerConnection && !peerConnection.currentRemoteDescription) {
+          await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+          document.getElementById('callStatusText').innerText = '通話中';
+          if (callTimeoutId) { clearTimeout(callTimeoutId); callTimeoutId = null; }
+        }
+        if (data.status === 'declined' || data.status === 'missed') {
+          document.getElementById('callStatusText').innerText = '相手が応答しませんでした';
+          setTimeout(() => endCallLocally(), 1200);
+        }
+        if (data.status === 'ended') {
+          endCallLocally();
+        }
+      }, () => {});
+
+      if (remoteCandidatesUnsub) remoteCandidatesUnsub();
+      const candidatesCol = remoteRole === 'callee' ? ref.collection('calleeCandidates') : ref.collection('callerCandidates');
+      remoteCandidatesUnsub = candidatesCol.onSnapshot(snap => {
+        snap.docs.forEach(d => {
+          if (processedCandidateIds.has(d.id)) return;
+          processedCandidateIds.add(d.id);
+          if (peerConnection) {
+            peerConnection.addIceCandidate(new RTCIceCandidate(d.data())).catch(() => {});
+          }
+        });
+      }, () => {});
+    }
+
+    function openCallOverlay() {
+      document.getElementById('callOverlay').classList.add('open');
+    }
+
+    function closeCallOverlay() {
+      document.getElementById('callOverlay').classList.remove('open');
+    }
+
+    function startCallFromThread() {
+      if (!activeDmStaffUid || !currentUser) return;
+      startCall(activeDmStaffUid);
+    }
+
+    async function startCall(staffUid) {
+      const statusEl = document.getElementById('callStartStatus');
+      if (activeCallId) { statusEl.innerText = '既に通話中です'; return; }
+
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      } catch (e) {
+        statusEl.innerText = 'カメラ・マイクにアクセスできませんでした: ' + e.message;
+        return;
+      }
+
+      callRole = 'caller';
+      processedCandidateIds = new Set();
+      peerConnection = new RTCPeerConnection(ICE_SERVERS);
+      localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
+      wirePeerConnectionEvents();
+
+      document.getElementById('localVideo').srcObject = localStream;
+      document.getElementById('callStatusText').innerText = '発信中...';
+      openCallOverlay();
+
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+
+      const channelRef = db.collection('dmChannels').doc(staffUid);
+      callDocRef = channelRef.collection('calls').doc();
+      activeCallId = callDocRef.id;
+
+      await callDocRef.set({
+        callerUid: currentUser.uid,
+        callerName: currentUser.displayName || currentUser.email,
+        callerRole: isAdminUser ? 'admin' : 'staff',
+        calleeRole: isAdminUser ? 'staff' : 'admin',
+        status: 'ringing',
+        offer: { type: offer.type, sdp: offer.sdp },
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      watchCallDoc(callDocRef, 'callee');
+      statusEl.innerText = '';
+
+      callTimeoutId = setTimeout(() => {
+        if (activeCallId === callDocRef.id) {
+          callDocRef.update({ status: 'missed' }).catch(() => {});
+        }
+      }, 45000);
+    }
+
+    async function acceptIncomingCall() {
+      if (!currentIncomingCall) return;
+      const { callId, staffUid, offer, ref } = currentIncomingCall;
+      stopRingTone();
+      document.getElementById('incomingCallOverlay').classList.remove('open');
+      if (incomingCallDocUnsub) { incomingCallDocUnsub(); incomingCallDocUnsub = null; }
+      currentIncomingCall = null;
+
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      } catch (e) {
+        alert('カメラ・マイクにアクセスできませんでした: ' + e.message);
+        ref.update({ status: 'declined' }).catch(() => {});
+        return;
+      }
+
+      callRole = 'callee';
+      processedCandidateIds = new Set();
+      activeCallId = callId;
+      callDocRef = ref;
+      peerConnection = new RTCPeerConnection(ICE_SERVERS);
+      localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
+      wirePeerConnectionEvents();
+
+      document.getElementById('localVideo').srcObject = localStream;
+      document.getElementById('callStatusText').innerText = '通話中';
+      openCallOverlay();
+
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+      await ref.update({ status: 'accepted', answer: { type: answer.type, sdp: answer.sdp } });
+
+      if (isAdminUser) {
+        activeDmStaffUid = staffUid;
+        renderAdminChatUI();
+      }
+
+      watchCallDoc(ref, 'caller');
+    }
+
+    function declineIncomingCall() {
+      if (!currentIncomingCall) return;
+      currentIncomingCall.ref.update({ status: 'declined' }).catch(() => {});
+      dismissIncomingCallBanner();
+    }
+
+    function hangUpCall() {
+      if (callDocRef && activeCallId) {
+        callDocRef.update({ status: 'ended' }).catch(() => {});
+      }
+      endCallLocally();
+    }
+
+    function endCallLocally() {
+      if (callTimeoutId) { clearTimeout(callTimeoutId); callTimeoutId = null; }
+      if (callDocUnsub) { callDocUnsub(); callDocUnsub = null; }
+      if (remoteCandidatesUnsub) { remoteCandidatesUnsub(); remoteCandidatesUnsub = null; }
+      if (peerConnection) { try { peerConnection.close(); } catch (e) {} peerConnection = null; }
+      if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+      const localVideo = document.getElementById('localVideo');
+      const remoteVideo = document.getElementById('remoteVideo');
+      if (localVideo) localVideo.srcObject = null;
+      if (remoteVideo) remoteVideo.srcObject = null;
+      closeCallOverlay();
+      callDocRef = null;
+      activeCallId = null;
+      callRole = null;
+      processedCandidateIds = new Set();
+    }
+
+    function toggleMic() {
+      if (!localStream) return;
+      const track = localStream.getAudioTracks()[0];
+      if (!track) return;
+      track.enabled = !track.enabled;
+      document.getElementById('micToggleBtn').classList.toggle('off', !track.enabled);
+    }
+
+    function toggleCamera() {
+      if (!localStream) return;
+      const track = localStream.getVideoTracks()[0];
+      if (!track) return;
+      track.enabled = !track.enabled;
+      document.getElementById('camToggleBtn').classList.toggle('off', !track.enabled);
     }
 
     // ===== 手書きサイン モーダル (掲示板の既読確認・トレーニング完了で共用) =====
