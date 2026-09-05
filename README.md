@@ -174,9 +174,10 @@
 
 1. `https://console.cloud.google.com/iam-admin/iam?project={プロジェクトID}` を開く（`{プロジェクトID}` は自分のFirebaseプロジェクトIDに置き換え）
 2. 手順1でダウンロードしたJSON内の `client_email` の値（例: `firebase-adminsdk-fbsvc@xxxx.iam.gserviceaccount.com`）を一覧から探す。あれば鉛筆アイコンで編集、なければ「+ アクセスを許可」で新規入力
-3. 以下の2つのロールを付与して保存
-   - **Firebase Rules Admin** (`roles/firebaserules.admin`) — FirestoreルールとStorageルールは同じ「Firebase Rules」APIの管轄なので、これ1つで両方をカバーします
+3. 以下の3つのロールを付与して保存
+   - **Firebase Rules Admin** (`roles/firebaserules.admin`) — FirestoreルールとStorageルールは同じ「Firebase Rules」APIの管轄なので、これ1つで両方のルール自体のデプロイをカバーします
    - **Service Usage Consumer** (`roles/serviceusage.serviceUsageConsumer`) — 近年のfirebase-toolsではサービスアカウントでのデプロイに必須です
+   - **Firebase Storage Admin** (`roles/firebasestorage.admin`) — Storageルールのデプロイ前に、firebase-toolsがプロジェクトのデフォルトバケット名を参照する（`firebasestorage.defaultBucket.get`）ために必要です。これが無いと `Permission 'firebasestorage.defaultBucket.get' denied` というエラーでStorageルールのデプロイだけ失敗します（Firestoreルールは成功します）
 
 ### 3. GitHubリポジトリにシークレットを登録
 
