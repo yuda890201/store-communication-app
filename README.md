@@ -11,8 +11,9 @@
 - **🎒 忘れ物管理台帳**: 拾得物を写真付きで記録し、保管中・返却済み・廃棄済みのステータスを管理
 - **🎓 トレーニング管理（名称変更可）**: 研修・資格制度のステップを登録し、完了時に本人が手書きサインして進捗を記録。機能名は店舗ごとに⚙️設定から自由に変更できます（コード上に固有の制度名は含まれません。実際の名称や内容はご自身のFirebaseデータにのみ保存されます）
 - **🧾 店控え書類の保管**: レシートなど毎日発生する書類をカメラで撮影、またはファイルから選択して保管。**この機能だけはFirebaseを使わず、端末（ブラウザ）内のIndexedDBにのみ保存**され、他の端末やクラウドには一切送信されません。日付ごとに一覧表示され、個別ダウンロードのほか、期間を指定してZIPでまとめてバックアップダウンロードできます
+- **🔐 管理者チャット**: 管理者とスタッフ本人の1:1チャット。他の機能と違い匿名端末では開けず、**スタッフ本人がメールアドレス＋パスワードでログインした場合のみ**、自分のスレッドが開きます。画像・ファイルの添付にも対応（最大20MB）。⚙️設定に登録したメールアドレスでログインした人は「管理者」として全スタッフのスレッド一覧（受信箱）から選んで返信できます。スタッフの初回登録はアプリ内の「初回登録」フォームから、管理者が発行した招待コードを使って行います
 
-上記のうち「店控え書類の保管」を除く機能は、Firestore・Firebase Storageで店舗の端末間・スタッフ間にリアルタイムに共有されます（要Firebase接続）。「店控え書類の保管」は端末ローカル保存のため、端末の故障・初期化に備えて定期的なZIPバックアップを推奨します。
+上記のうち「店控え書類の保管」を除く機能は、Firestore・Firebase Storageで店舗の端末間・スタッフ間にリアルタイムに共有されます（要Firebase接続）。「店控え書類の保管」は端末ローカル保存のため、端末の故障・初期化に備えて定期的なZIPバックアップを推奨します。「🔐 管理者チャット」のみ、他の機能とは別に本人のFirebaseアカウントでのログインが必要です。
 
 ## セットアップ
 
@@ -20,23 +21,64 @@
 
 1. [Firebaseコンソール](https://console.firebase.google.com/)で新規プロジェクトを作成
 2. 「Firestore Database」を作成（本番モードでOK）
-3. 「Storage」を作成（忘れ物の写真アップロードに使用）
-4. 「Authentication」→「Sign-in method」で **匿名（Anonymous）** プロバイダを有効化
-   - ログイン画面は表示されません。端末がバックグラウンドで自動的に匿名認証されます。
-5. Firestoreの「ルール」を以下のように設定（匿名認証済みの端末のみ読み書き許可）
+3. 「Storage」を作成（忘れ物の写真・管理者チャットの添付ファイルのアップロードに使用）
+4. 「Authentication」→「Sign-in method」で以下の2つのプロバイダを有効化
+   - **匿名（Anonymous）**: 連絡ノート・掲示板・マニュアル・チャット・忘れ物・トレーニング管理で使用。ログイン画面は表示されず、端末がバックグラウンドで自動的に匿名認証されます。
+   - **メール / パスワード**: 🔐管理者チャットのスタッフ本人ログイン・自己登録に使用
+5. Firestoreの「ルール」を以下のように設定
 
    ```
    rules_version = '2';
    service cloud.firestore {
      match /databases/{database}/documents {
-       match /{document=**} {
-         allow read, write: if request.auth != null;
+       function isSignedIn() { return request.auth != null; }
+       function isAnonymous() { return request.auth.token.firebase.sign_in_provider == 'anonymous'; }
+       function isAdminEmail() {
+         return isSignedIn() && !isAnonymous() &&
+           exists(/databases/$(database)/documents/appSettings/general) &&
+           (request.auth.token.email.lower() in
+             get(/databases/$(database)/documents/appSettings/general).data.adminEmails);
+       }
+
+       // 連絡ノート・掲示板・マニュアル・チャット・忘れ物・トレーニング管理・アプリ設定
+       // (匿名端末を含む全ログイン済み端末で共有)
+       match /notebookEntries/{id} { allow read, write: if isSignedIn(); }
+       match /bulletinPosts/{id} { allow read, write: if isSignedIn(); }
+       match /bulletinAcks/{id} { allow read, write: if isSignedIn(); }
+       match /manuals/{id} { allow read, write: if isSignedIn(); }
+       match /chatMessages/{id} { allow read, write: if isSignedIn(); }
+       match /lostItems/{id} { allow read, write: if isSignedIn(); }
+       match /trainingSteps/{id} { allow read, write: if isSignedIn(); }
+       match /trainingCompletions/{id} { allow read, write: if isSignedIn(); }
+       match /appSettings/{id} { allow read, write: if isSignedIn(); }
+
+       // 管理者チャット用: 本人のプロフィール (自分のuidの行だけ本人が作成・更新可)
+       match /staffProfiles/{uid} {
+         allow read: if isSignedIn();
+         allow create, update: if isSignedIn() && !isAnonymous() && request.auth.uid == uid;
+       }
+
+       // 管理者チャット用: 本人のスレッドのみ本人が、全スレッドは管理者メールのみ閲覧・返信可
+       match /dmChannels/{staffUid} {
+         allow read, write: if isSignedIn() && !isAnonymous() &&
+           (request.auth.uid == staffUid || isAdminEmail());
+
+         match /messages/{msgId} {
+           allow read: if isSignedIn() && !isAnonymous() &&
+             (request.auth.uid == staffUid || isAdminEmail());
+           allow create: if isSignedIn() && !isAnonymous() &&
+             (request.auth.uid == staffUid || isAdminEmail()) &&
+             request.resource.data.senderUid == request.auth.uid;
+           allow update, delete: if false;
+         }
        }
      }
    }
    ```
 
-6. Storageの「ルール」を以下のように設定（匿名認証済みの端末のみ読み書き許可）
+   `isAdminEmail()` は ⚙️設定の「管理者チャット設定」に登録したメールアドレス一覧（`appSettings/general.adminEmails`）と、ログイン中のメールアドレスを比較しています。管理者を追加・削除したい場合はアプリ側の設定画面から変更でき、Firebaseコンソールでルールを書き換える必要はありません。
+
+6. Storageの「ルール」を以下のように設定（匿名認証・メール認証を問わず、ログイン済み端末のみ読み書き許可）
 
    ```
    rules_version = '2';
@@ -49,6 +91,8 @@
    }
    ```
 
+   > **注記**: `getDownloadURL()` が返すURLはアクセストークン付きの直リンクのため、そのURL自体が漏えいすると認証なしで閲覧できてしまいます（忘れ物の写真・管理者チャットの添付ファイル共通の制約です）。URLはFirestore側のドキュメント（アクセス制御あり）にのみ保存され、アプリ外に表示・共有はしていません。
+
 7. 「プロジェクトの設定」→「マイアプリ」でウェブアプリを追加し、表示される `firebaseConfig` オブジェクトをコピー
 
 ### 2. アプリ側でFirebaseに接続
@@ -59,7 +103,17 @@
 
 トレーニング機能の名称（店舗独自の制度名など）も ⚙️ メニューから変更できます。この設定はFirebase上に保存され、同じ店舗の全端末に共有されます。
 
-これで店舗のタブレット（認証なし・共有利用）から、全機能がスタッフ間でリアルタイムに共有されるようになります。
+これで店舗のタブレット（認証なし・共有利用）から、連絡ノート・掲示板・マニュアル・チャット・忘れ物・トレーニング管理がスタッフ間でリアルタイムに共有されるようになります。
+
+### 3. 🔐管理者チャットの設定（本人認証）
+
+1. ⚙️メニューの「管理者チャット設定」で、管理者にしたい人のメールアドレスを1行ずつ登録し、招待コード（第三者に推測されにくいもの）を設定します
+2. スタッフには招待コードを口頭・メモなどで伝えてください
+3. 各スタッフ（管理者になる人も含む）は、ホーム画面の「🔐管理者チャット」→「初回登録」から、名前・メールアドレス・パスワード・招待コードを入力して自分のアカウントを作成します
+4. 登録したメールアドレスが手順1の管理者一覧に含まれていれば、そのアカウントでログインしたときだけ全スタッフのスレッド一覧（受信箱）が表示されます。含まれていなければ、自分自身と管理者だけが見られる個人スレッドが表示されます
+5. ログアウトすると、端末は自動的に元の匿名認証に戻り、他の機能は共有端末として引き続き使えます
+
+管理者を増やしたい・入れ替えたい場合も、Firebaseコンソールを操作する必要はなく、⚙️設定の管理者メールアドレス一覧を編集するだけで反映されます。
 
 ## ホスティング
 

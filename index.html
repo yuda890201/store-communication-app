@@ -13,7 +13,7 @@
     h2 { font-size: 1rem; margin: 0 0 10px; }
     label { font-weight: bold; display: block; margin-bottom: 6px; font-size: 0.9rem; }
 
-    input[type="text"], input[type="date"], input[type="file"], select, textarea {
+    input[type="text"], input[type="date"], input[type="file"], input[type="password"], input[type="email"], select, textarea {
       width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.95rem; font-family: inherit; background: white;
     }
     textarea { resize: vertical; }
@@ -122,6 +122,11 @@
     .sig-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
     .sig-actions button { flex: 1; min-width: 90px; }
     .doc-viewer-img { width: 100%; border-radius: 8px; margin: 8px 0; display: block; }
+
+    /* ===== 管理者チャット (本人認証が必要な1:1 DM) ===== */
+    .auth-tab-btn.active { background: #007bff; color: white; border-color: #007bff; }
+    .dm-attachment-img { max-width: 220px; max-height: 220px; border-radius: 8px; margin-top: 4px; cursor: pointer; display: block; object-fit: cover; }
+    .dm-attachment-file { display: inline-block; background: white; border: 1px solid #ccc; padding: 6px 10px; border-radius: 8px; font-size: 0.8rem; margin-top: 4px; color: #333; text-decoration: none; }
   </style>
 </head>
 <body>
@@ -169,6 +174,11 @@
         <span class="grid-icon">🧾</span>
         <div class="grid-label">店控え書類</div>
         <div class="grid-desc">レシート等を撮影保管(端末内)</div>
+      </div>
+      <div class="grid-card" onclick="openView('adminchat')">
+        <span class="grid-icon">🔐</span>
+        <div class="grid-label">管理者チャット</div>
+        <div class="grid-desc">本人ログインが必要・画像/ファイル可</div>
       </div>
     </div>
   </div>
@@ -335,6 +345,73 @@
     <div id="docList"></div>
   </div>
 
+  <!-- ===== 管理者チャット (本人認証が必要な1:1 DM) ===== -->
+  <div data-view="adminchat">
+    <div class="view-topbar">
+      <button class="back-btn" onclick="handleAdminChatBack()">‹</button>
+      <div class="view-title">🔐 管理者チャット</div>
+      <button class="settings-btn" onclick="openSideDrawer()">⚙️</button>
+    </div>
+
+    <div id="adminChatNoFirebase" class="empty-state" style="display: none;">Firebaseが未接続です。⚙️設定の「Firebaseデータベース設定」を確認してください。</div>
+
+    <!-- 未ログイン: ログイン/初回登録 -->
+    <div id="adminChatAuthPanel" style="display: none;">
+      <div class="card">
+        <p style="font-size: 0.8rem; color: #666; margin-top: 0;">この機能はスタッフ本人のログインが必要です。他の機能とは別に、メールアドレスとパスワードでログインしてください。</p>
+        <div style="display: flex; gap: 8px; margin-bottom: 14px;">
+          <button class="btn-outline auth-tab-btn active" id="authTabLoginBtn" onclick="switchAuthTab('login')" style="flex: 1;">ログイン</button>
+          <button class="btn-outline auth-tab-btn" id="authTabRegisterBtn" onclick="switchAuthTab('register')" style="flex: 1;">初回登録</button>
+        </div>
+
+        <div id="authLoginForm">
+          <label for="loginEmail">メールアドレス</label>
+          <input type="email" id="loginEmail" placeholder="you@example.com">
+          <label for="loginPassword">パスワード</label>
+          <input type="password" id="loginPassword" placeholder="パスワード">
+          <button class="btn-primary" onclick="doLogin()">ログイン</button>
+        </div>
+
+        <div id="authRegisterForm" style="display: none;">
+          <label for="registerName">名前</label>
+          <input type="text" id="registerName" placeholder="例: 佐藤">
+          <label for="registerEmail">メールアドレス</label>
+          <input type="email" id="registerEmail" placeholder="you@example.com">
+          <label for="registerPassword">パスワード（6文字以上）</label>
+          <input type="password" id="registerPassword" placeholder="パスワード">
+          <label for="registerInviteCode">招待コード</label>
+          <input type="text" id="registerInviteCode" placeholder="管理者から教えてもらったコード">
+          <button class="btn-primary" onclick="doRegister()">登録する</button>
+        </div>
+        <div id="authStatus" class="status"></div>
+      </div>
+    </div>
+
+    <!-- 管理者ログイン後: 全スタッフの受信箱 -->
+    <div id="dmInboxPanel" style="display: none;">
+      <p class="status">スタッフからの個別チャット一覧です。タップして返信できます。</p>
+      <div id="dmInboxList"></div>
+      <button class="btn-clear" style="margin-top: 10px; width: 100%;" onclick="doLogout()">🚪 ログアウト</button>
+    </div>
+
+    <!-- スタッフ本人のスレッド / 管理者が選択したスレッド (共用) -->
+    <div id="dmThreadPanel" style="display: none;">
+      <button class="btn-clear" id="dmBackToInboxBtn" style="display: none; margin-bottom: 10px;" onclick="showDmInbox()">← 受信箱へ</button>
+      <div id="dmThreadHeader" class="status"></div>
+      <div id="dmMessageList" class="chat-container" style="max-height: 50vh;"></div>
+      <div id="dmUploadStatus" class="status"></div>
+      <div class="add-input-group" style="margin-bottom: 8px;">
+        <input type="text" id="dmMessageInput" placeholder="メッセージを入力">
+        <button class="btn-primary" style="width: auto;" onclick="sendDmMessage()">送信</button>
+      </div>
+      <label class="btn-secondary doc-capture-btn" style="width: 100%;">
+        📎 画像・ファイルを添付
+        <input type="file" id="dmFileInput" hidden onchange="handleDmFileSelect(this.files)">
+      </label>
+      <button class="btn-clear" style="margin-top: 10px; width: 100%;" onclick="doLogout()">🚪 ログアウト</button>
+    </div>
+  </div>
+
   <!-- ===== 設定サイドパネル ===== -->
   <div id="sideDrawerOverlay" class="side-drawer-overlay" onclick="closeSideDrawer()"></div>
   <div id="sideDrawer" class="side-drawer">
@@ -368,9 +445,24 @@
     </details>
 
     <details>
+      <summary>🔐 管理者チャット設定</summary>
+      <div style="margin-top: 10px;">
+        <p style="font-size: 0.8rem; color: #666;">ここに登録したメールアドレスでログインした人だけが「管理者」として全スタッフの個別チャットを閲覧・返信できます。1行に1件入力してください。</p>
+        <label for="adminEmailsInput">管理者のメールアドレス</label>
+        <textarea id="adminEmailsInput" rows="3" placeholder="manager@example.com"></textarea>
+        <button class="btn-secondary" onclick="saveAdminEmails()">💾 保存</button>
+
+        <p style="font-size: 0.8rem; color: #666; margin-top: 14px;">スタッフがアプリ内で自己登録する際に必要な招待コードです。第三者に推測されにくいものに設定してください。</p>
+        <label for="inviteCodeInput">招待コード</label>
+        <input type="text" id="inviteCodeInput" placeholder="例: sakura2026">
+        <button class="btn-secondary" onclick="saveInviteCode()">💾 保存</button>
+      </div>
+    </details>
+
+    <details>
       <summary>🔥 Firebaseデータベース設定</summary>
       <div style="margin-top: 10px;">
-        <p style="font-size: 0.8rem; color: #666;">Firebaseコンソールでプロジェクトを作成し、Firestore Database・Authenticationの「匿名」プロバイダ・Storage（写真アップロード用）を用意した上で、ウェブアプリのConfigをここに貼り付けてください。ログイン画面は表示されず、端末が自動的に匿名認証されます。</p>
+        <p style="font-size: 0.8rem; color: #666;">Firebaseコンソールでプロジェクトを作成し、Firestore Database・Authenticationの「匿名」および「メール/パスワード」プロバイダ・Storage（写真アップロード用）を用意した上で、ウェブアプリのConfigをここに貼り付けてください。通常の機能はログイン画面なしで端末が自動的に匿名認証されます（🔐管理者チャットのみ別途メールアドレスでのログインが必要です）。</p>
         <label for="firebaseConfig">Firebase Config (JSON)</label>
         <textarea id="firebaseConfig" rows="6" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","storageBucket":"...","messagingSenderId":"...","appId":"..."}'></textarea>
         <button class="btn-secondary" onclick="saveFirebaseConfig()">💾 保存して接続</button>
@@ -414,7 +506,7 @@
 
   <script>
     // ===== ナビゲーション (ホームのグリッド ⇔ 各機能ビュー) =====
-    const VIEWS = ['home', 'notebook', 'bulletin', 'manual', 'chat', 'lostfound', 'training', 'documents'];
+    const VIEWS = ['home', 'notebook', 'bulletin', 'manual', 'chat', 'lostfound', 'training', 'documents', 'adminchat'];
 
     function openView(view) {
       VIEWS.forEach(v => {
@@ -422,6 +514,7 @@
       });
       window.scrollTo(0, 0);
       if (view === 'chat') renderChatMessages();
+      if (view === 'adminchat') renderAdminChatUI();
     }
 
     // ===== 設定サイドパネル =====
@@ -463,6 +556,7 @@
       });
 
       renderDocList();
+      renderAdminChatUI();
       initFirebase();
       initSignaturePad();
     });
@@ -480,6 +574,17 @@
     let lostItems = [];
     let trainingSteps = [];
     let trainingCompletions = [];
+
+    // 管理者チャット (本人認証) 用の状態
+    let currentUser = null;
+    let isAdminUser = false;
+    let adminEmailsList = [];
+    let activeDmStaffUid = null;
+    let attachedDmStaffUid = null;
+    let dmMessages = [];
+    let dmMessagesUnsub = null;
+    let dmInboxChannels = [];
+    let dmInboxUnsub = null;
 
     function setDbStatus(text) {
       document.getElementById('dbStatus').innerText = text;
@@ -500,6 +605,12 @@
         db = firebase.firestore();
         storage = firebase.storage();
         setDbStatus('接続中...');
+
+        firebase.auth().onAuthStateChanged(user => {
+          currentUser = (user && !user.isAnonymous) ? user : null;
+          renderAdminChatUI();
+        });
+
         firebase.auth().signInAnonymously()
           .then(() => {
             setDbStatus('✅ 接続済み');
@@ -550,6 +661,18 @@
         if (!document.getElementById('trainingNameInput').dataset.userEdited) {
           document.getElementById('trainingNameInput').value = name;
         }
+
+        const data = doc.exists ? doc.data() : {};
+        adminEmailsList = Array.isArray(data.adminEmails) ? data.adminEmails.map(e => (e || '').toLowerCase()) : [];
+        const adminEmailsInput = document.getElementById('adminEmailsInput');
+        if (!adminEmailsInput.dataset.userEdited) {
+          adminEmailsInput.value = adminEmailsList.join('\n');
+        }
+        const inviteCodeInput = document.getElementById('inviteCodeInput');
+        if (!inviteCodeInput.dataset.userEdited) {
+          inviteCodeInput.value = data.staffInviteCode || '';
+        }
+        renderAdminChatUI();
       });
 
       db.collection('notebookEntries').orderBy('createdAt', 'desc').limit(200).onSnapshot(snap => {
@@ -600,6 +723,22 @@
       if (!name) return;
       input.dataset.userEdited = '1';
       db.collection('appSettings').doc('general').set({ trainingProgramName: name }, { merge: true });
+    }
+
+    function saveAdminEmails() {
+      if (!requireDb()) return;
+      const input = document.getElementById('adminEmailsInput');
+      const emails = input.value.split('\n').map(s => s.trim().toLowerCase()).filter(Boolean);
+      input.dataset.userEdited = '1';
+      db.collection('appSettings').doc('general').set({ adminEmails: emails }, { merge: true });
+    }
+
+    function saveInviteCode() {
+      if (!requireDb()) return;
+      const input = document.getElementById('inviteCodeInput');
+      const code = input.value.trim();
+      input.dataset.userEdited = '1';
+      db.collection('appSettings').doc('general').set({ staffInviteCode: code }, { merge: true });
     }
 
     // ===== 連絡ノート =====
@@ -1376,6 +1515,342 @@
       a.remove();
       URL.revokeObjectURL(url);
       statusEl.innerText = `✅ ${filtered.length}件をダウンロードしました`;
+    }
+
+    // ===== 管理者チャット (本人認証が必要な1:1 DM。画像・ファイル共有対応) =====
+    function switchAuthTab(mode) {
+      document.getElementById('authLoginForm').style.display = mode === 'login' ? 'block' : 'none';
+      document.getElementById('authRegisterForm').style.display = mode === 'register' ? 'block' : 'none';
+      document.getElementById('authTabLoginBtn').classList.toggle('active', mode === 'login');
+      document.getElementById('authTabRegisterBtn').classList.toggle('active', mode === 'register');
+      document.getElementById('authStatus').innerText = '';
+    }
+
+    async function doLogin() {
+      if (!requireDb()) return;
+      const email = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPassword').value;
+      const statusEl = document.getElementById('authStatus');
+      if (!email || !password) { statusEl.innerText = 'メールアドレスとパスワードを入力してください'; return; }
+      statusEl.innerText = 'ログイン中...';
+      try {
+        await firebase.auth().signInWithEmailAndPassword(email, password);
+        statusEl.innerText = '';
+      } catch (e) {
+        statusEl.innerText = 'ログインに失敗しました: ' + e.message;
+      }
+    }
+
+    async function doRegister() {
+      if (!requireDb()) return;
+      const name = document.getElementById('registerName').value.trim();
+      const email = document.getElementById('registerEmail').value.trim();
+      const password = document.getElementById('registerPassword').value;
+      const inviteCode = document.getElementById('registerInviteCode').value.trim();
+      const statusEl = document.getElementById('authStatus');
+
+      if (!name || !email || !password || !inviteCode) { statusEl.innerText = 'すべての項目を入力してください'; return; }
+      if (password.length < 6) { statusEl.innerText = 'パスワードは6文字以上にしてください'; return; }
+
+      statusEl.innerText = '招待コードを確認中...';
+      let validCode = '';
+      let isRegisteringAsAdmin = false;
+      try {
+        const settingsDoc = await db.collection('appSettings').doc('general').get();
+        const settingsData = settingsDoc.exists ? settingsDoc.data() : {};
+        validCode = settingsData.staffInviteCode || '';
+        const adminEmails = Array.isArray(settingsData.adminEmails) ? settingsData.adminEmails.map(e => (e || '').toLowerCase()) : [];
+        isRegisteringAsAdmin = adminEmails.includes(email.toLowerCase());
+      } catch (e) {
+        statusEl.innerText = '確認に失敗しました: ' + e.message;
+        return;
+      }
+      if (!validCode || inviteCode !== validCode) {
+        statusEl.innerText = '招待コードが違います。管理者に確認してください。';
+        return;
+      }
+
+      statusEl.innerText = '登録中...';
+      try {
+        const cred = await firebase.auth().createUserWithEmailAndPassword(email, password);
+        await cred.user.updateProfile({ displayName: name });
+        await db.collection('staffProfiles').doc(cred.user.uid).set({
+          name, email, createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        if (!isRegisteringAsAdmin) {
+          await db.collection('dmChannels').doc(cred.user.uid).set({
+            staffUid: cred.user.uid, staffName: name, staffEmail: email,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            lastMessageAt: firebase.firestore.FieldValue.serverTimestamp(),
+            lastMessageText: ''
+          }, { merge: true });
+        }
+        statusEl.innerText = '';
+      } catch (e) {
+        statusEl.innerText = '登録に失敗しました: ' + e.message;
+      }
+    }
+
+    async function doLogout() {
+      activeDmStaffUid = null;
+      detachDmListener();
+      await firebase.auth().signOut();
+      try { await firebase.auth().signInAnonymously(); } catch (e) {}
+    }
+
+    function handleAdminChatBack() {
+      if (isAdminUser && activeDmStaffUid) {
+        showDmInbox();
+        return;
+      }
+      openView('home');
+    }
+
+    function showDmInbox() {
+      activeDmStaffUid = null;
+      detachDmListener();
+      renderAdminChatUI();
+    }
+
+    function ensureDmInboxSubscription() {
+      if (isAdminUser && !dmInboxUnsub && db) {
+        dmInboxUnsub = db.collection('dmChannels').orderBy('lastMessageAt', 'desc').limit(200)
+          .onSnapshot(snap => {
+            dmInboxChannels = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            renderDmInboxList();
+          }, () => {});
+      } else if (!isAdminUser && dmInboxUnsub) {
+        dmInboxUnsub();
+        dmInboxUnsub = null;
+        dmInboxChannels = [];
+      }
+    }
+
+    function renderDmInboxList() {
+      const container = document.getElementById('dmInboxList');
+      if (!container) return;
+      if (dmInboxChannels.length === 0) {
+        container.innerHTML = '<div class="empty-state">登録されているスタッフはまだいません</div>';
+        return;
+      }
+      container.innerHTML = '';
+      dmInboxChannels.forEach(ch => {
+        const row = document.createElement('div');
+        row.className = 'card';
+        row.style.cursor = 'pointer';
+        row.onclick = () => { activeDmStaffUid = ch.id; renderAdminChatUI(); };
+
+        const title = document.createElement('div');
+        title.className = 'item-title';
+        title.innerText = ch.staffName || ch.staffEmail || '(不明なスタッフ)';
+        row.appendChild(title);
+
+        const preview = document.createElement('div');
+        preview.className = 'entry-meta';
+        preview.innerText = [formatEntryTime(ch, 'lastMessageAt'), ch.lastMessageText].filter(Boolean).join(' ・ ') || 'まだメッセージはありません';
+        row.appendChild(preview);
+
+        container.appendChild(row);
+      });
+    }
+
+    function detachDmListener() {
+      if (dmMessagesUnsub) { dmMessagesUnsub(); dmMessagesUnsub = null; }
+      attachedDmStaffUid = null;
+      dmMessages = [];
+    }
+
+    function attachDmListener(staffUid) {
+      if (attachedDmStaffUid === staffUid && dmMessagesUnsub) return;
+      detachDmListener();
+      attachedDmStaffUid = staffUid;
+      dmMessagesUnsub = db.collection('dmChannels').doc(staffUid).collection('messages')
+        .orderBy('createdAt', 'asc').limit(300)
+        .onSnapshot(snap => {
+          dmMessages = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          renderDmMessages();
+        }, () => {});
+
+      const header = document.getElementById('dmThreadHeader');
+      if (isAdminUser) {
+        const ch = dmInboxChannels.find(c => c.id === staffUid);
+        header.innerText = ch ? `💬 ${ch.staffName || ch.staffEmail} さんとのチャット` : '💬 チャット';
+      } else {
+        header.innerText = '💬 管理者とのチャット';
+      }
+    }
+
+    function formatFileSize(bytes) {
+      if (!bytes) return '';
+      if (bytes < 1024) return bytes + 'B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + 'KB';
+      return (bytes / 1024 / 1024).toFixed(1) + 'MB';
+    }
+
+    function renderDmMessages() {
+      const container = document.getElementById('dmMessageList');
+      if (!container || !currentUser) return;
+      if (dmMessages.length === 0) {
+        container.innerHTML = '<div class="empty-state">まだメッセージはありません</div>';
+        return;
+      }
+      container.innerHTML = '';
+      dmMessages.forEach(m => {
+        const isMine = m.senderUid === currentUser.uid;
+        const wrap = document.createElement('div');
+        wrap.className = 'chat-bubble-wrap' + (isMine ? ' mine' : '');
+
+        if (!isMine) {
+          const label = document.createElement('div');
+          label.className = 'chat-sender-label';
+          label.innerText = m.senderName + (m.senderRole === 'admin' ? '（管理者）' : '');
+          wrap.appendChild(label);
+        }
+
+        if (m.text) {
+          const bubble = document.createElement('div');
+          bubble.className = 'chat-bubble' + (isMine ? '' : ' chat-bubble-other');
+          bubble.innerText = m.text;
+          wrap.appendChild(bubble);
+        }
+
+        if (m.fileUrl) {
+          if ((m.fileType || '').startsWith('image/')) {
+            const img = document.createElement('img');
+            img.className = 'dm-attachment-img';
+            img.src = m.fileUrl;
+            img.alt = m.fileName || '添付画像';
+            img.onclick = () => window.open(m.fileUrl, '_blank', 'noopener,noreferrer');
+            wrap.appendChild(img);
+          } else {
+            const link = document.createElement('a');
+            link.className = 'dm-attachment-file';
+            link.href = m.fileUrl;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.innerText = `📎 ${m.fileName || 'ファイル'} (${formatFileSize(m.fileSize)})`;
+            wrap.appendChild(link);
+          }
+        }
+
+        container.appendChild(wrap);
+      });
+      container.scrollTop = container.scrollHeight;
+    }
+
+    async function postDmMessage({ text, fileUrl, fileName, fileType, fileSize }) {
+      if (!currentUser || !activeDmStaffUid) return;
+      const staffUid = activeDmStaffUid;
+      const msg = {
+        senderUid: currentUser.uid,
+        senderName: currentUser.displayName || currentUser.email || (isAdminUser ? '管理者' : 'スタッフ'),
+        senderRole: isAdminUser ? 'admin' : 'staff',
+        text: text || '',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+      if (fileUrl) {
+        msg.fileUrl = fileUrl;
+        msg.fileName = fileName;
+        msg.fileType = fileType;
+        msg.fileSize = fileSize;
+      }
+
+      const channelRef = db.collection('dmChannels').doc(staffUid);
+      await channelRef.collection('messages').add(msg);
+
+      const channelMeta = {
+        lastMessageAt: firebase.firestore.FieldValue.serverTimestamp(),
+        lastMessageText: text || (fileName ? `📎 ${fileName}` : '')
+      };
+      if (!isAdminUser) {
+        channelMeta.staffUid = staffUid;
+        channelMeta.staffName = currentUser.displayName || currentUser.email;
+        channelMeta.staffEmail = currentUser.email;
+      }
+      await channelRef.set(channelMeta, { merge: true });
+    }
+
+    async function sendDmMessage() {
+      if (!currentUser || !activeDmStaffUid) return;
+      const input = document.getElementById('dmMessageInput');
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = '';
+      await postDmMessage({ text });
+    }
+
+    async function handleDmFileSelect(fileList) {
+      const file = fileList && fileList[0];
+      if (!file || !currentUser || !activeDmStaffUid) return;
+      const statusEl = document.getElementById('dmUploadStatus');
+      const MAX_SIZE = 20 * 1024 * 1024;
+      if (file.size > MAX_SIZE) {
+        statusEl.innerText = 'ファイルサイズが大きすぎます（20MBまで）';
+        document.getElementById('dmFileInput').value = '';
+        return;
+      }
+      try {
+        statusEl.innerText = 'アップロード中...';
+        const path = `dmChannels/${activeDmStaffUid}/${Date.now()}_${file.name}`;
+        const ref = storage.ref().child(path);
+        const snap = await ref.put(file);
+        const url = await snap.ref.getDownloadURL();
+        await postDmMessage({ text: '', fileUrl: url, fileName: file.name, fileType: file.type, fileSize: file.size });
+        statusEl.innerText = '';
+      } catch (e) {
+        statusEl.innerText = 'アップロードに失敗しました: ' + e.message;
+      }
+      document.getElementById('dmFileInput').value = '';
+    }
+
+    function renderAdminChatUI() {
+      const noFirebase = document.getElementById('adminChatNoFirebase');
+      const authPanel = document.getElementById('adminChatAuthPanel');
+      const inboxPanel = document.getElementById('dmInboxPanel');
+      const threadPanel = document.getElementById('dmThreadPanel');
+      if (!noFirebase || !authPanel || !inboxPanel || !threadPanel) return;
+
+      if (!db) {
+        noFirebase.style.display = 'block';
+        authPanel.style.display = 'none';
+        inboxPanel.style.display = 'none';
+        threadPanel.style.display = 'none';
+        return;
+      }
+      noFirebase.style.display = 'none';
+
+      if (!currentUser) {
+        authPanel.style.display = 'block';
+        inboxPanel.style.display = 'none';
+        threadPanel.style.display = 'none';
+        isAdminUser = false;
+        activeDmStaffUid = null;
+        detachDmListener();
+        ensureDmInboxSubscription();
+        return;
+      }
+
+      authPanel.style.display = 'none';
+      isAdminUser = adminEmailsList.includes((currentUser.email || '').toLowerCase());
+      ensureDmInboxSubscription();
+
+      if (isAdminUser) {
+        if (activeDmStaffUid) {
+          inboxPanel.style.display = 'none';
+          threadPanel.style.display = 'block';
+          document.getElementById('dmBackToInboxBtn').style.display = 'block';
+          attachDmListener(activeDmStaffUid);
+        } else {
+          inboxPanel.style.display = 'block';
+          threadPanel.style.display = 'none';
+        }
+      } else {
+        activeDmStaffUid = currentUser.uid;
+        inboxPanel.style.display = 'none';
+        threadPanel.style.display = 'block';
+        document.getElementById('dmBackToInboxBtn').style.display = 'none';
+        attachDmListener(activeDmStaffUid);
+      }
     }
 
     // ===== 手書きサイン モーダル (掲示板の既読確認・トレーニング完了で共用) =====
