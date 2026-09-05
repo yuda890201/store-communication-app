@@ -318,6 +318,28 @@
         <button class="btn-primary" onclick="addManual()">📖 マニュアルを追加</button>
       </div>
     </details>
+    <details>
+      <summary>📥 まとめてインポート（JSON）</summary>
+      <div style="margin-top: 10px;">
+        <p class="status">紙のマニュアルや資料の写真・PDFをClaudeなどの生成AIに読み取らせ、下の指示文と一緒に送るとJSONを作ってもらえます。できたJSONをここに貼り付けるか、ファイルとして保存してアップロードしてください。</p>
+        <div class="card" style="background: var(--card-bg, #f7f7f7);">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <strong>Claudeへの指示文</strong>
+            <button class="btn-secondary" style="width:auto; padding:6px 10px;" onclick="copyTextFromElement('manualImportPromptText')">📋 コピー</button>
+          </div>
+          <pre id="manualImportPromptText" style="white-space:pre-wrap; font-size:0.82rem; margin:8px 0 0;">添付した資料の内容を読み取り、店舗マニュアルとして登録できるように、以下のJSON配列の形式だけを出力してください（説明文やコードブロックの記号は不要です）。資料に複数の章・項目があれば配列の要素を分けてください。
+[
+  { "category": "カテゴリ名（例: レジ操作）", "title": "見出し", "body": "本文。手順は改行で区切る" }
+]</pre>
+        </div>
+        <label for="manualImportFile">JSONファイルを選択</label>
+        <input type="file" id="manualImportFile" accept="application/json,.json" onchange="handleManualImportFile(this.files)">
+        <label for="manualImportText">またはJSONを直接貼り付け</label>
+        <textarea id="manualImportText" rows="6" placeholder='[{"category":"レジ操作","title":"開店準備","body":"..."}]'></textarea>
+        <button class="btn-primary" onclick="importManualsFromJson(document.getElementById('manualImportText').value)">📥 インポート実行</button>
+        <div id="manualImportStatus" class="status"></div>
+      </div>
+    </details>
     <div id="manualList"></div>
   </div>
 
@@ -387,6 +409,29 @@
         <label for="trainingStoreTags">対象店舗（複数選択可・未選択は全店共通）</label>
         <select id="trainingStoreTags" multiple size="3"></select>
         <button class="btn-primary" onclick="addTrainingStep()">➕ ステップを追加</button>
+      </div>
+    </details>
+    <details>
+      <summary>📥 まとめてインポート（JSON）</summary>
+      <div style="margin-top: 10px;">
+        <p class="status">研修資料や資格制度の一覧をClaudeなどの生成AIに読み取らせ、下の指示文と一緒に送るとJSONを作ってもらえます。できたJSONをここに貼り付けるか、ファイルとして保存してアップロードしてください。</p>
+        <div class="card" style="background: var(--card-bg, #f7f7f7);">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <strong>Claudeへの指示文</strong>
+            <button class="btn-secondary" style="width:auto; padding:6px 10px;" onclick="copyTextFromElement('trainingImportPromptText')">📋 コピー</button>
+          </div>
+          <pre id="trainingImportPromptText" style="white-space:pre-wrap; font-size:0.82rem; margin:8px 0 0;">添付した資料の内容を読み取り、研修・資格制度のステップ一覧として登録できるように、以下のJSON配列の形式だけを出力してください（説明文やコードブロックの記号は不要です）。特定の店舗だけが対象の項目でなければ storeTags は省略するか空配列にしてください。
+[
+  { "title": "ステップ名（例: レジ操作の基本）", "storeTags": [] }
+]</pre>
+        </div>
+        <p class="status">storeTagsに店舗名を入れる場合は、⚙️→🔒オーナー設定の「🏪店舗一覧」に登録済みの名前と完全に一致させてください。</p>
+        <label for="trainingImportFile">JSONファイルを選択</label>
+        <input type="file" id="trainingImportFile" accept="application/json,.json" onchange="handleTrainingImportFile(this.files)">
+        <label for="trainingImportText">またはJSONを直接貼り付け</label>
+        <textarea id="trainingImportText" rows="6" placeholder='[{"title":"レジ操作の基本","storeTags":[]}]'></textarea>
+        <button class="btn-primary" onclick="importTrainingStepsFromJson(document.getElementById('trainingImportText').value)">📥 インポート実行</button>
+        <div id="trainingImportStatus" class="status"></div>
       </div>
     </details>
     <div class="card">
@@ -1068,6 +1113,31 @@
       return Array.from(selectEl.selectedOptions).map(o => o.value);
     }
 
+    // ===== JSONインポート共通ヘルパー (マニュアル・トレーニング進捗) =====
+    function extractJsonArray(parsed, wrapperKey) {
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed && Array.isArray(parsed[wrapperKey])) return parsed[wrapperKey];
+      return null;
+    }
+
+    function copyTextFromElement(elId) {
+      const text = document.getElementById(elId).innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        alert('コピーしました。Claudeなどのチャットに貼り付けて、資料の画像やPDFと一緒に送ってください。');
+      }).catch(() => {
+        alert('コピーに失敗しました。テキストを選択して手動でコピーしてください。');
+      });
+    }
+
+    function readFileAsTextInto(fileList, textareaId, fileInputId) {
+      const file = fileList && fileList[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => { document.getElementById(textareaId).value = reader.result; };
+      reader.readAsText(file);
+      document.getElementById(fileInputId).value = '';
+    }
+
     function populateStoreSelect(selectEl, { multiple = false, filterMode = false } = {}) {
       const previous = multiple ? getSelectedOptions(selectEl) : selectEl.value;
       const keepFirstOption = filterMode ? selectEl.firstElementChild : null;
@@ -1514,6 +1584,36 @@
       db.collection('manuals').doc(id).delete();
     }
 
+    function handleManualImportFile(fileList) {
+      readFileAsTextInto(fileList, 'manualImportText', 'manualImportFile');
+    }
+
+    async function importManualsFromJson(jsonText) {
+      if (!requireDb()) return;
+      const statusEl = document.getElementById('manualImportStatus');
+      let parsed;
+      try { parsed = JSON.parse(jsonText); }
+      catch (e) { statusEl.innerText = 'JSONの形式が正しくありません: ' + e.message; return; }
+      const list = extractJsonArray(parsed, 'manuals');
+      if (!list) { statusEl.innerText = 'JSONは配列、または { "manuals": [...] } の形式で入力してください。'; return; }
+
+      statusEl.innerText = 'インポート中...';
+      let ok = 0, skipped = 0;
+      for (const item of list) {
+        const title = (item && item.title ? String(item.title) : '').trim();
+        if (!title) { skipped++; continue; }
+        const category = (item.category ? String(item.category) : '').trim() || 'その他';
+        const body = (item.body ? String(item.body) : '').trim();
+        await db.collection('manuals').add({
+          category, title, body,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        ok++;
+      }
+      statusEl.innerText = `${ok}件のマニュアルを追加しました${skipped > 0 ? `（タイトル未入力の${skipped}件はスキップ）` : ''}`;
+      document.getElementById('manualImportText').value = '';
+    }
+
     function renderManualList() {
       const container = document.getElementById('manualList');
       if (!container) return;
@@ -1842,6 +1942,41 @@
       if (!confirm('このステップを削除しますか？（完了サイン記録も削除されます）')) return;
       db.collection('trainingSteps').doc(id).delete();
       trainingCompletions.filter(c => c.stepId === id).forEach(c => db.collection('trainingCompletions').doc(c.id).delete());
+    }
+
+    function handleTrainingImportFile(fileList) {
+      readFileAsTextInto(fileList, 'trainingImportText', 'trainingImportFile');
+    }
+
+    async function importTrainingStepsFromJson(jsonText) {
+      if (!requireDb()) return;
+      const statusEl = document.getElementById('trainingImportStatus');
+      let parsed;
+      try { parsed = JSON.parse(jsonText); }
+      catch (e) { statusEl.innerText = 'JSONの形式が正しくありません: ' + e.message; return; }
+      const list = extractJsonArray(parsed, 'steps');
+      if (!list) { statusEl.innerText = 'JSONは配列、または { "steps": [...] } の形式で入力してください。'; return; }
+
+      statusEl.innerText = 'インポート中...';
+      let ok = 0, skipped = 0, unknownTags = 0;
+      for (const item of list) {
+        const title = (item && item.title ? String(item.title) : '').trim();
+        if (!title) { skipped++; continue; }
+        const storeTags = Array.isArray(item.storeTags)
+          ? item.storeTags.map(s => String(s).trim()).filter(Boolean)
+          : [];
+        if (storeTags.some(t => !storesList.includes(t))) unknownTags++;
+        await db.collection('trainingSteps').add({
+          title, storeTags,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        ok++;
+      }
+      let msg = `${ok}件のステップを追加しました`;
+      if (skipped > 0) msg += `（タイトル未入力の${skipped}件はスキップ）`;
+      if (unknownTags > 0) msg += `／${unknownTags}件は登録されていない店舗名のタグを含んでいます（🏪店舗一覧と一致する名前に修正してください）`;
+      statusEl.innerText = msg;
+      document.getElementById('trainingImportText').value = '';
     }
 
     function completionsForStep(stepId) {
