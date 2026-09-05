@@ -13,6 +13,7 @@ service cloud.firestore {
     // 連絡ノート・掲示板・マニュアル・チャット・忘れ物・トレーニング管理・アプリ設定
     // (匿名端末を含む全ログイン済み端末で共有)
     match /notebookEntries/{id} { allow read, write: if isSignedIn(); }
+    match /handoverItems/{id} { allow read, write: if isSignedIn(); }
     match /bulletinPosts/{id} { allow read, write: if isSignedIn(); }
     match /bulletinAcks/{id} { allow read, write: if isSignedIn(); }
     match /manuals/{id} { allow read, write: if isSignedIn(); }

@@ -87,6 +87,15 @@
 
     .manual-category-heading { font-size: 0.8rem; font-weight: bold; color: #666; margin: 15px 0 6px; }
 
+    /* ===== 連絡ノート: 引継ぎウィザード ===== */
+    .handover-answer-row { display: flex; gap: 10px; margin-bottom: 12px; }
+    .handover-answer-btn { flex: 1; padding: 18px 8px; border-radius: 10px; border: 2px solid #dde2eb; background: white; font-weight: bold; font-size: 0.95rem; color: #333; }
+    .handover-answer-btn.selected.yes-selected { border-color: #dc3545; background: #fdecea; color: #dc3545; }
+    .handover-answer-btn.selected.no-selected { border-color: #28a745; background: #e9f7ef; color: #28a745; }
+    .flow-nav { display: flex; gap: 8px; margin-top: 4px; }
+    .flow-nav button { flex: 1; }
+    .flow-nav button:disabled { opacity: 0.45; cursor: not-allowed; }
+
     /* ===== チャット ===== */
     .chat-container { background: #eef2f5; border: 1px solid #ccc; border-radius: 8px; padding: 10px; max-height: 55vh; overflow-y: auto; margin-bottom: 10px; }
     .chat-bubble-wrap { max-width: 85%; margin-bottom: 8px; }
@@ -209,12 +218,56 @@
       <button class="settings-btn" onclick="openSideDrawer()">⚙️</button>
     </div>
     <div class="status" id="notebookStoreContext"></div>
-    <div class="card">
-      <label for="notebookInput">新しい連絡を書く</label>
-      <textarea id="notebookInput" rows="3" placeholder="例: 本日14時に業者が来店予定です"></textarea>
-      <button class="btn-primary" onclick="addNotebookEntry()">📝 投稿する</button>
+
+    <!-- 通常表示: 最新の引継ぎ・作成ボタン・履歴 -->
+    <div id="notebookMainPanel">
+      <div class="card">
+        <label>📋 最新の引継ぎ</label>
+        <div id="latestHandoverContent" class="entry-body">まだ引継ぎがありません</div>
+        <div class="entry-meta" id="latestHandoverMeta"></div>
+      </div>
+
+      <button class="btn-primary" style="font-size: 1.05rem; padding: 16px;" onclick="startHandoverWizard()">📋 引継ぎを作成する</button>
+      <button class="btn-clear" style="width: 100%; margin-top: 8px;" onclick="toggleFreeNoteForm()">＋ 自由に一言追加する</button>
+
+      <div class="card" id="freeNoteForm" style="display: none; margin-top: 10px;">
+        <label for="notebookInput">自由記入</label>
+        <textarea id="notebookInput" rows="3" placeholder="例: 本日14時に業者が来店予定です"></textarea>
+        <button class="btn-primary" onclick="addNotebookEntry()">📝 投稿する</button>
+      </div>
+
+      <div class="manual-category-heading">📜 履歴</div>
+      <div id="notebookList"></div>
     </div>
-    <div id="notebookList"></div>
+
+    <!-- 引継ぎウィザード (一問一答) -->
+    <div id="handoverWizard" style="display: none;">
+      <div class="status" id="handoverProgressLabel"></div>
+
+      <div class="card" id="handoverQuestionCard">
+        <h2 id="handoverQuestionText"></h2>
+        <div class="handover-answer-row">
+          <button class="handover-answer-btn" id="handoverYesBtn" onclick="selectHandoverAnswer('yes')">⚠️ あり</button>
+          <button class="handover-answer-btn" id="handoverNoBtn" onclick="selectHandoverAnswer('no')">✅ なし</button>
+        </div>
+        <div id="handoverDetailWrap" style="display: none;">
+          <label for="handoverDetailInput">詳細（任意）</label>
+          <textarea id="handoverDetailInput" rows="2" placeholder="具体的な内容があれば入力してください"></textarea>
+        </div>
+      </div>
+
+      <div class="flow-nav">
+        <button class="btn-clear" id="handoverPrevBtn" onclick="prevHandoverStep()">‹ 戻る</button>
+        <button class="btn-primary" id="handoverNextBtn" onclick="nextHandoverStep()">次へ ›</button>
+      </div>
+      <button class="btn-clear" style="width: 100%; margin-top: 8px;" onclick="cancelHandoverWizard()">✕ 中止する</button>
+
+      <div class="card" id="handoverPreviewCard" style="display: none; margin-top: 14px;">
+        <h2>📋 引継ぎ書プレビュー（編集できます）</h2>
+        <textarea id="handoverPreviewText" rows="8"></textarea>
+        <button class="btn-success" onclick="submitHandover()">✅ この内容で投稿する</button>
+      </div>
+    </div>
   </div>
 
   <!-- ===== 掲示板 ===== -->
@@ -278,10 +331,15 @@
     <div class="status" id="chatStoreContext"></div>
     <div class="card">
       <div id="chatMessageList" class="chat-container"></div>
+      <div id="chatUploadStatus" class="status"></div>
       <div class="add-input-group">
         <input type="text" id="chatMessageInput" placeholder="メッセージを入力">
         <button class="btn-primary" style="width: auto;" onclick="sendChatMessage()">送信</button>
       </div>
+      <label class="btn-secondary doc-capture-btn" style="width: 100%; margin-top: 8px;">
+        📎 画像・ファイルを添付
+        <input type="file" id="chatFileInput" hidden onchange="handleChatFileSelect(this.files)">
+      </label>
     </div>
   </div>
 
@@ -545,6 +603,21 @@
       </div>
     </details>
 
+    <details open>
+      <summary>📋 引継ぎ項目（連絡ノートの一問一答）</summary>
+      <div style="margin-top: 10px;">
+        <p style="font-size: 0.8rem; color: #666;">連絡ノートの「引継ぎを作成する」で、スタッフに一問一答で聞かれる質問リストです。「あり」と回答された項目だけが、下の定型文を使って引継ぎ書に自動で組み込まれます。</p>
+        <div id="handoverItemList"></div>
+        <hr>
+        <label for="handoverQuestionInput">質問文</label>
+        <input type="text" id="handoverQuestionInput" placeholder="例: レジの過不足はありましたか？">
+        <label for="handoverTemplateInput">「あり」の場合の定型文</label>
+        <input type="text" id="handoverTemplateInput" placeholder="例: レジ過不足あり">
+        <button class="btn-primary" onclick="addHandoverItem()">➕ 項目を追加</button>
+        <button class="btn-secondary" style="margin-top: 8px;" onclick="seedDefaultHandoverItems()">🌱 サンプル項目を追加する</button>
+      </div>
+    </details>
+
     <details>
       <summary>🎓 トレーニング機能の名称</summary>
       <div style="margin-top: 10px;">
@@ -705,6 +778,7 @@
     let storePickerShownThisLoad = false;
 
     let notebookEntries = [];
+    let handoverItems = [];
     let bulletinPosts = [];
     let bulletinAcks = [];
     let manuals = [];
@@ -824,6 +898,11 @@
       db.collection('notebookEntries').orderBy('createdAt', 'desc').limit(200).onSnapshot(snap => {
         notebookEntries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         renderNotebookList();
+      });
+
+      db.collection('handoverItems').orderBy('createdAt', 'asc').onSnapshot(snap => {
+        handoverItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderHandoverItemList();
       });
 
       db.collection('bulletinPosts').orderBy('createdAt', 'desc').limit(200).onSnapshot(snap => {
@@ -1035,10 +1114,16 @@
       const text = input.value.trim();
       if (!text) return;
       db.collection('notebookEntries').add({
-        text, author: getMyName(), store: activeStore,
+        type: 'note', text, author: getMyName(), store: activeStore,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       input.value = '';
+      document.getElementById('freeNoteForm').style.display = 'none';
+    }
+
+    function toggleFreeNoteForm() {
+      const form = document.getElementById('freeNoteForm');
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
     }
 
     function deleteNotebookEntry(id) {
@@ -1050,6 +1135,20 @@
       const container = document.getElementById('notebookList');
       if (!container) return;
       const visible = visibleForActiveStore(notebookEntries);
+
+      const latestHandover = visible.find(e => e.type === 'handover');
+      const latestContent = document.getElementById('latestHandoverContent');
+      const latestMeta = document.getElementById('latestHandoverMeta');
+      if (latestContent) {
+        if (latestHandover) {
+          latestContent.innerText = latestHandover.text;
+          latestMeta.innerText = [formatEntryTime(latestHandover), showAllStores ? latestHandover.store : '', latestHandover.author].filter(Boolean).join(' ・ ');
+        } else {
+          latestContent.innerText = 'まだ引継ぎがありません。「📋 引継ぎを作成する」から作成してください。';
+          latestMeta.innerText = '';
+        }
+      }
+
       if (visible.length === 0) {
         container.innerHTML = '<div class="empty-state">連絡ノートはまだありません</div>';
         return;
@@ -1061,7 +1160,8 @@
 
         const meta = document.createElement('div');
         meta.className = 'entry-meta';
-        meta.innerText = [formatEntryTime(e), showAllStores ? e.store : '', e.author].filter(Boolean).join(' ・ ');
+        const typeIcon = e.type === 'handover' ? '📋' : '📝';
+        meta.innerText = [typeIcon, formatEntryTime(e), showAllStores ? e.store : '', e.author].filter(Boolean).join(' ・ ');
         card.appendChild(meta);
 
         const body = document.createElement('div');
@@ -1080,6 +1180,172 @@
 
         container.appendChild(card);
       });
+    }
+
+    // ===== 引継ぎ項目 (オーナー設定で管理) =====
+    function addHandoverItem() {
+      if (!requireDb()) return;
+      const qInput = document.getElementById('handoverQuestionInput');
+      const tInput = document.getElementById('handoverTemplateInput');
+      const question = qInput.value.trim();
+      const yesTemplate = tInput.value.trim();
+      if (!question) return;
+      db.collection('handoverItems').add({
+        question, yesTemplate,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      qInput.value = '';
+      tInput.value = '';
+    }
+
+    function deleteHandoverItem(id) {
+      if (!confirm('この引継ぎ項目を削除しますか？')) return;
+      db.collection('handoverItems').doc(id).delete();
+    }
+
+    async function seedDefaultHandoverItems() {
+      if (!requireDb()) return;
+      if (handoverItems.length > 0 && !confirm('すでに項目が登録されています。サンプル項目を追加で挿入しますか？')) return;
+      const defaults = [
+        ['レジの過不足はありましたか？', 'レジ過不足あり'],
+        ['クレーム・トラブル対応はありましたか？', 'クレーム・トラブル対応あり'],
+        ['在庫切れ・発注が必要な商品はありますか？', '在庫切れ・発注要'],
+        ['清掃・整理が必要な箇所はありますか？', '清掃・整理要'],
+        ['本部・上長への報告事項はありますか？', '本部・上長への報告事項あり'],
+        ['次のシフトに直接伝えたいことはありますか？', '次シフトへの伝達事項あり']
+      ];
+      for (const [question, yesTemplate] of defaults) {
+        await db.collection('handoverItems').add({
+          question, yesTemplate, createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+    }
+
+    function renderHandoverItemList() {
+      const container = document.getElementById('handoverItemList');
+      if (!container) return;
+      if (handoverItems.length === 0) {
+        container.innerHTML = '<div class="empty-state">引継ぎ項目はまだありません</div>';
+        return;
+      }
+      container.innerHTML = '';
+      handoverItems.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'task-row';
+        const label = document.createElement('div');
+        label.className = 'task-row-label';
+        label.innerText = item.question + (item.yesTemplate ? `（${item.yesTemplate}）` : '');
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn-clear';
+        delBtn.innerText = '削除';
+        delBtn.onclick = () => deleteHandoverItem(item.id);
+        row.appendChild(label);
+        row.appendChild(delBtn);
+        container.appendChild(row);
+      });
+    }
+
+    // ===== 引継ぎウィザード (一問一答 → 定型文を組み合わせて自動生成) =====
+    let handoverWizardIndex = 0;
+    let handoverAnswers = [];
+
+    function startHandoverWizard() {
+      if (handoverItems.length === 0) {
+        alert('引継ぎ項目が登録されていません。⚙️→🔒オーナー設定で項目を追加してください。');
+        return;
+      }
+      handoverWizardIndex = 0;
+      handoverAnswers = handoverItems.map(item => ({
+        itemId: item.id, question: item.question, yesTemplate: item.yesTemplate, answer: null, detail: ''
+      }));
+      document.getElementById('notebookMainPanel').style.display = 'none';
+      document.getElementById('handoverWizard').style.display = 'block';
+      document.getElementById('handoverQuestionCard').style.display = 'block';
+      document.querySelector('#handoverWizard .flow-nav').style.display = 'flex';
+      document.getElementById('handoverPreviewCard').style.display = 'none';
+      renderHandoverStep();
+    }
+
+    function renderHandoverStep() {
+      const item = handoverItems[handoverWizardIndex];
+      const answer = handoverAnswers[handoverWizardIndex];
+      document.getElementById('handoverProgressLabel').innerText = `質問 ${handoverWizardIndex + 1} / ${handoverItems.length}`;
+      document.getElementById('handoverQuestionText').innerText = item.question;
+
+      const yesBtn = document.getElementById('handoverYesBtn');
+      const noBtn = document.getElementById('handoverNoBtn');
+      yesBtn.classList.toggle('selected', answer.answer === 'yes');
+      yesBtn.classList.toggle('yes-selected', answer.answer === 'yes');
+      noBtn.classList.toggle('selected', answer.answer === 'no');
+      noBtn.classList.toggle('no-selected', answer.answer === 'no');
+
+      document.getElementById('handoverDetailWrap').style.display = answer.answer === 'yes' ? 'block' : 'none';
+      document.getElementById('handoverDetailInput').value = answer.detail || '';
+
+      document.getElementById('handoverNextBtn').disabled = !answer.answer;
+      document.getElementById('handoverNextBtn').innerText = handoverWizardIndex === handoverItems.length - 1 ? 'プレビューへ ›' : '次へ ›';
+      document.getElementById('handoverPrevBtn').style.visibility = handoverWizardIndex === 0 ? 'hidden' : 'visible';
+    }
+
+    function selectHandoverAnswer(value) {
+      handoverAnswers[handoverWizardIndex].answer = value;
+      if (value === 'no') handoverAnswers[handoverWizardIndex].detail = '';
+      renderHandoverStep();
+    }
+
+    function nextHandoverStep() {
+      handoverAnswers[handoverWizardIndex].detail = document.getElementById('handoverDetailInput').value.trim();
+      if (handoverWizardIndex < handoverItems.length - 1) {
+        handoverWizardIndex++;
+        renderHandoverStep();
+      } else {
+        showHandoverPreview();
+      }
+    }
+
+    function prevHandoverStep() {
+      if (handoverWizardIndex === 0) return;
+      handoverAnswers[handoverWizardIndex].detail = document.getElementById('handoverDetailInput').value.trim();
+      handoverWizardIndex--;
+      renderHandoverStep();
+    }
+
+    function composeHandoverText(answers) {
+      const yesAnswers = answers.filter(a => a.answer === 'yes');
+      if (yesAnswers.length === 0) return '本日の引継ぎ事項は特にありません。';
+      return yesAnswers.map(a => {
+        let line = '・' + (a.yesTemplate || a.question);
+        if (a.detail) line += `\n　→ ${a.detail}`;
+        return line;
+      }).join('\n');
+    }
+
+    function showHandoverPreview() {
+      document.getElementById('handoverQuestionCard').style.display = 'none';
+      document.querySelector('#handoverWizard .flow-nav').style.display = 'none';
+      document.getElementById('handoverPreviewCard').style.display = 'block';
+      document.getElementById('handoverPreviewText').value = composeHandoverText(handoverAnswers);
+    }
+
+    function closeHandoverWizard() {
+      document.getElementById('handoverWizard').style.display = 'none';
+      document.getElementById('notebookMainPanel').style.display = 'block';
+    }
+
+    function cancelHandoverWizard() {
+      if (!confirm('引継ぎ作成を中止しますか？入力内容は破棄されます。')) return;
+      closeHandoverWizard();
+    }
+
+    async function submitHandover() {
+      if (!requireDb() || !requireActiveStore()) return;
+      const composedText = document.getElementById('handoverPreviewText').value.trim();
+      await db.collection('notebookEntries').add({
+        type: 'handover', text: composedText, answers: handoverAnswers,
+        author: getMyName(), store: activeStore,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      closeHandoverWizard();
     }
 
     // ===== 掲示板 (要確認 + 手書きサイン) =====
@@ -1300,16 +1566,52 @@
     }
 
     // ===== チャットルーム =====
+    function postChatMessage({ text, fileUrl, fileName, fileType, fileSize }) {
+      const msg = {
+        text: text || '', sender: getMyName(), store: activeStore,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+      if (fileUrl) {
+        msg.fileUrl = fileUrl;
+        msg.fileName = fileName;
+        msg.fileType = fileType;
+        msg.fileSize = fileSize;
+      }
+      return db.collection('chatMessages').add(msg);
+    }
+
     function sendChatMessage() {
       if (!requireDb() || !requireActiveStore()) return;
       const input = document.getElementById('chatMessageInput');
       const text = input.value.trim();
       if (!text) return;
-      db.collection('chatMessages').add({
-        text, sender: getMyName(), store: activeStore,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
+      postChatMessage({ text });
       input.value = '';
+    }
+
+    async function handleChatFileSelect(fileList) {
+      const file = fileList && fileList[0];
+      if (!file) return;
+      if (!requireDb() || !requireActiveStore()) { document.getElementById('chatFileInput').value = ''; return; }
+      const statusEl = document.getElementById('chatUploadStatus');
+      const MAX_SIZE = 20 * 1024 * 1024;
+      if (file.size > MAX_SIZE) {
+        statusEl.innerText = 'ファイルサイズが大きすぎます（20MBまで）';
+        document.getElementById('chatFileInput').value = '';
+        return;
+      }
+      try {
+        statusEl.innerText = 'アップロード中...';
+        const path = `chatMessages/${activeStore}/${Date.now()}_${file.name}`;
+        const ref = storage.ref().child(path);
+        const snap = await ref.put(file);
+        const url = await snap.ref.getDownloadURL();
+        await postChatMessage({ text: '', fileUrl: url, fileName: file.name, fileType: file.type, fileSize: file.size });
+        statusEl.innerText = '';
+      } catch (e) {
+        statusEl.innerText = 'アップロードに失敗しました: ' + e.message;
+      }
+      document.getElementById('chatFileInput').value = '';
     }
 
     function renderChatMessages() {
@@ -1336,10 +1638,31 @@
           wrap.appendChild(senderLabel);
         }
 
-        const bubble = document.createElement('div');
-        bubble.className = 'chat-bubble' + (isMine ? '' : ' chat-bubble-other');
-        bubble.innerText = m.text;
-        wrap.appendChild(bubble);
+        if (m.text) {
+          const bubble = document.createElement('div');
+          bubble.className = 'chat-bubble' + (isMine ? '' : ' chat-bubble-other');
+          bubble.innerText = m.text;
+          wrap.appendChild(bubble);
+        }
+
+        if (m.fileUrl) {
+          if ((m.fileType || '').startsWith('image/')) {
+            const img = document.createElement('img');
+            img.className = 'dm-attachment-img';
+            img.src = m.fileUrl;
+            img.alt = m.fileName || '添付画像';
+            img.onclick = () => window.open(m.fileUrl, '_blank', 'noopener,noreferrer');
+            wrap.appendChild(img);
+          } else {
+            const link = document.createElement('a');
+            link.className = 'dm-attachment-file';
+            link.href = m.fileUrl;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.innerText = `📎 ${m.fileName || 'ファイル'} (${formatFileSize(m.fileSize)})`;
+            wrap.appendChild(link);
+          }
+        }
 
         container.appendChild(wrap);
       });
