@@ -440,14 +440,49 @@
     <details>
       <summary>➕ 拾得物を登録</summary>
       <div style="margin-top: 10px;">
-        <label for="lostTitleInput">品名</label>
-        <input type="text" id="lostTitleInput" placeholder="例: 黒い折りたたみ傘">
-        <label for="lostDescInput">特徴・メモ</label>
-        <textarea id="lostDescInput" rows="3" placeholder="例: 持ち手に赤いテープ"></textarea>
-        <label for="lostLocationInput">発見場所</label>
-        <input type="text" id="lostLocationInput" placeholder="例: レジ横の椅子">
+        <label for="lostTitleInput">品名（リストから選択、無ければ新規入力）</label>
+        <input type="text" id="lostTitleInput" list="lostTitleList" placeholder="例: 黒い折りたたみ傘">
+        <datalist id="lostTitleList"></datalist>
+
+        <label>色（複数選択可）</label>
+        <div class="valuable-check-group" id="lostColorTagGroup">
+          <label><input type="checkbox" value="黒">黒</label>
+          <label><input type="checkbox" value="白">白</label>
+          <label><input type="checkbox" value="グレー">グレー</label>
+          <label><input type="checkbox" value="赤">赤</label>
+          <label><input type="checkbox" value="オレンジ">オレンジ</label>
+          <label><input type="checkbox" value="黄">黄</label>
+          <label><input type="checkbox" value="緑">緑</label>
+          <label><input type="checkbox" value="青">青</label>
+          <label><input type="checkbox" value="紫">紫</label>
+          <label><input type="checkbox" value="ピンク">ピンク</label>
+          <label><input type="checkbox" value="茶">茶</label>
+          <label><input type="checkbox" value="金">金</label>
+          <label><input type="checkbox" value="銀">銀</label>
+          <label><input type="checkbox" value="その他">その他</label>
+        </div>
+        <label>柄（複数選択可）</label>
+        <div class="valuable-check-group" id="lostPatternTagGroup">
+          <label><input type="checkbox" value="無地">無地</label>
+          <label><input type="checkbox" value="ボーダー">ボーダー</label>
+          <label><input type="checkbox" value="チェック">チェック</label>
+          <label><input type="checkbox" value="ドット">ドット</label>
+          <label><input type="checkbox" value="花柄">花柄</label>
+          <label><input type="checkbox" value="迷彩">迷彩</label>
+          <label><input type="checkbox" value="ロゴ・ブランド柄">ロゴ・ブランド柄</label>
+          <label><input type="checkbox" value="その他">その他</label>
+        </div>
+        <label for="lostDescInput">特徴の補足（自由入力・任意）</label>
+        <textarea id="lostDescInput" rows="2" placeholder="例: 持ち手に赤いテープ"></textarea>
+
+        <label for="lostLocationInput">発見場所（リストから選択、無ければ新規入力）</label>
+        <input type="text" id="lostLocationInput" list="lostLocationList" placeholder="例: レジ横の椅子">
+        <datalist id="lostLocationList"></datalist>
+
         <label for="lostDateInput">発見日</label>
         <input type="date" id="lostDateInput">
+        <label for="lostTimeInput">発見時刻（15分刻み）</label>
+        <select id="lostTimeInput"></select>
         <label>貴重品タグ（該当すれば選択・複数可）</label>
         <div class="valuable-check-group" id="lostValuableTagGroup">
           <label><input type="checkbox" value="スマホ">📱 スマホ</label>
@@ -929,6 +964,8 @@
       const today = new Date();
       const todayStr = today.toISOString().slice(0, 10);
       lostDateInput.value = todayStr;
+      populateTimeOptions();
+      resetLostTimeToNow();
       document.getElementById('docDateInput').value = todayStr;
       document.getElementById('backupFromDate').value = todayStr;
       document.getElementById('backupToDate').value = todayStr;
@@ -969,6 +1006,8 @@
     let lostFoundSettings = { storeName: '', storeAddress: '', storePhone: '', occupantCode: '', defaultRights: 'yuken', handoverFormFileUrl: '', handoverFormFileName: '' };
     let lostFilterMode = null;
     let policeFormCandidates = [];
+    let lostItemNames = [];
+    let lostLocationNames = [];
     let trainingSteps = [];
     let trainingCompletions = [];
 
@@ -1100,6 +1139,10 @@
         const rightsInput = document.getElementById('lostDefaultRightsInput');
         if (rightsInput && !rightsInput.dataset.userEdited) rightsInput.value = lostFoundSettings.defaultRights;
         renderHandoverFormFileLink();
+
+        lostItemNames = Array.isArray(data.lostItemNames) ? data.lostItemNames : [];
+        lostLocationNames = Array.isArray(data.lostLocationNames) ? data.lostLocationNames : [];
+        renderLostNameDatalists();
 
         renderAdminChatUI();
         renderLostList();
@@ -2055,25 +2098,64 @@
     }
 
     // ===== 忘れ物管理台帳 =====
+    function renderLostNameDatalists() {
+      const titleList = document.getElementById('lostTitleList');
+      if (titleList) titleList.innerHTML = lostItemNames.map(n => `<option value="${escapeHtml(n)}">`).join('');
+      const locationList = document.getElementById('lostLocationList');
+      if (locationList) locationList.innerHTML = lostLocationNames.map(n => `<option value="${escapeHtml(n)}">`).join('');
+    }
+
+    function populateTimeOptions() {
+      const select = document.getElementById('lostTimeInput');
+      if (!select || select.options.length > 0) return;
+      for (let h = 0; h < 24; h++) {
+        for (let m = 0; m < 60; m += 15) {
+          const label = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+          const opt = document.createElement('option');
+          opt.value = label;
+          opt.innerText = label;
+          select.appendChild(opt);
+        }
+      }
+    }
+
+    function nearestTimeSlotValue() {
+      const now = new Date();
+      const rounded = Math.floor(now.getMinutes() / 15) * 15;
+      return String(now.getHours()).padStart(2, '0') + ':' + String(rounded).padStart(2, '0');
+    }
+
+    function resetLostTimeToNow() {
+      const select = document.getElementById('lostTimeInput');
+      if (select) select.value = nearestTimeSlotValue();
+    }
+
     async function addLostItem() {
       if (!requireDb() || !requireActiveStore()) return;
       const titleInput = document.getElementById('lostTitleInput');
       const descInput = document.getElementById('lostDescInput');
       const locationInput = document.getElementById('lostLocationInput');
       const dateInput = document.getElementById('lostDateInput');
+      const timeInput = document.getElementById('lostTimeInput');
       const photoInput = document.getElementById('lostPhotoInput');
       const statusEl = document.getElementById('lostUploadStatus');
 
       const title = titleInput.value.trim();
       if (!title) return;
+      const foundLocation = locationInput.value.trim();
 
       const valuableTags = Array.from(document.querySelectorAll('#lostValuableTagGroup input:checked')).map(el => el.value);
+      const colorTags = Array.from(document.querySelectorAll('#lostColorTagGroup input:checked')).map(el => el.value);
+      const patternTags = Array.from(document.querySelectorAll('#lostPatternTagGroup input:checked')).map(el => el.value);
 
       const data = {
         title,
         description: descInput.value.trim(),
-        foundLocation: locationInput.value.trim(),
+        colorTags,
+        patternTags,
+        foundLocation,
         foundDate: dateInput.value || '',
+        foundTime: timeInput.value || '',
         status: 'stored',
         photoUrl: '',
         store: activeStore,
@@ -2099,12 +2181,23 @@
       }
 
       await db.collection('lostItems').add(data);
+
+      const settingsUpdate = {};
+      if (title && !lostItemNames.includes(title)) settingsUpdate.lostItemNames = [...lostItemNames, title];
+      if (foundLocation && !lostLocationNames.includes(foundLocation)) settingsUpdate.lostLocationNames = [...lostLocationNames, foundLocation];
+      if (Object.keys(settingsUpdate).length > 0) {
+        await db.collection('appSettings').doc('general').set(settingsUpdate, { merge: true });
+      }
+
       statusEl.innerText = '';
       titleInput.value = '';
       descInput.value = '';
       locationInput.value = '';
       photoInput.value = '';
       document.querySelectorAll('#lostValuableTagGroup input:checked').forEach(el => { el.checked = false; });
+      document.querySelectorAll('#lostColorTagGroup input:checked').forEach(el => { el.checked = false; });
+      document.querySelectorAll('#lostPatternTagGroup input:checked').forEach(el => { el.checked = false; });
+      resetLostTimeToNow();
     }
 
     function markLostItemReturned(id) {
@@ -2140,6 +2233,11 @@
     }
 
     // ===== 忘れ物リマインド (月末まとめ・3ヶ月保管・貴重品の警察届出) =====
+    function formatFoundDateTime(item) {
+      if (!item.foundDate) return '';
+      return item.foundTime ? `${item.foundDate} ${item.foundTime}` : item.foundDate;
+    }
+
     function isOlderThanMonths(dateStr, months) {
       if (!dateStr) return false;
       const found = new Date(dateStr + 'T00:00:00');
@@ -2284,11 +2382,18 @@
           card.appendChild(tagsRow);
         }
 
+        if ((item.colorTags && item.colorTags.length > 0) || (item.patternTags && item.patternTags.length > 0)) {
+          const featureRow = document.createElement('div');
+          featureRow.className = 'entry-meta';
+          featureRow.innerText = [...(item.colorTags || []), ...(item.patternTags || [])].join(' ・ ');
+          card.appendChild(featureRow);
+        }
+
         const meta = document.createElement('div');
         meta.className = 'entry-meta';
         const metaParts = [];
         if (showAllStores && item.store) metaParts.push('🏪 ' + item.store);
-        if (item.foundDate) metaParts.push('発見日: ' + item.foundDate);
+        if (item.foundDate) metaParts.push('発見日時: ' + formatFoundDateTime(item));
         if (item.foundLocation) metaParts.push('場所: ' + item.foundLocation);
         meta.innerText = metaParts.join(' ・ ');
         card.appendChild(meta);
@@ -2354,8 +2459,9 @@
           </div>
           <h1>落 と し 物 メ モ</h1>
           <div class="print-field-row"><span class="pf-label">品名:</span>${escapeHtml(item.title)}</div>
-          <div class="print-field-row"><span class="pf-label">特徴・メモ:</span>${escapeHtml(item.description || '')}</div>
-          <div class="print-field-row"><span class="pf-label">発見日:</span>${escapeHtml(item.foundDate || '')}　<span class="pf-label">発見場所:</span>${escapeHtml(item.foundLocation || '')}</div>
+          <div class="print-field-row"><span class="pf-label">色・柄:</span>${[...(item.colorTags || []), ...(item.patternTags || [])].join('・') || 'なし'}</div>
+          <div class="print-field-row"><span class="pf-label">特徴の補足:</span>${escapeHtml(item.description || '')}</div>
+          <div class="print-field-row"><span class="pf-label">発見日時:</span>${escapeHtml(formatFoundDateTime(item))}　<span class="pf-label">発見場所:</span>${escapeHtml(item.foundLocation || '')}</div>
           <div class="print-field-row"><span class="pf-label">貴重品タグ:</span>${(item.valuableTags || []).join('・') || 'なし'}</div>
           <div class="print-field-row"><span class="pf-label">状態:</span>${st.text}</div>
           ${item.photoUrl ? `<img class="print-memo-photo" src="${item.photoUrl}">` : ''}
@@ -2386,7 +2492,10 @@
         id: i.id,
         title: i.title,
         description: i.description,
+        colorTags: i.colorTags || [],
+        patternTags: i.patternTags || [],
         foundDate: i.foundDate,
+        foundTime: i.foundTime,
         foundLocation: i.foundLocation,
         valuableTags: i.valuableTags || [],
         include: needsPoliceReport(i),
@@ -2460,19 +2569,22 @@
       const receiptNumber = document.getElementById('pfReceiptNumber').value.trim();
       const [y, m, d] = reportDate.split('-');
 
-      const rows = selected.map((item, idx) => `
+      const rows = selected.map((item, idx) => {
+        const shape = [...(item.colorTags || []), ...(item.patternTags || []), item.description || ''].filter(Boolean).join('・');
+        return `
         <tr>
           <td>${idx + 1}</td>
           <td>${escapeHtml(item.title)}</td>
-          <td>${escapeHtml(item.description || '')}</td>
+          <td>${escapeHtml(shape)}</td>
           <td>1</td>
           <td>${escapeHtml(item.itemCode || '')}</td>
           <td>${escapeHtml(String(item.points || ''))}</td>
-          <td>${escapeHtml(item.foundDate || '')}</td>
+          <td>${escapeHtml(formatFoundDateTime(item))}</td>
           <td>${escapeHtml(item.foundLocation || '')}</td>
           <td>${item.rightsType === 'shikken' ? '2.失権' : '1.有権'}</td>
         </tr>
-      `).join('');
+      `;
+      }).join('');
 
       const printArea = document.getElementById('printArea');
       printArea.innerHTML = `
@@ -2490,7 +2602,7 @@
           <table>
             <thead>
               <tr>
-                <th>明細番号</th><th>品名</th><th>形状・種類・模様・品質等</th><th>件数</th><th>物品コード</th><th>点数</th><th>拾得日</th><th>拾得場所</th><th>権利</th>
+                <th>明細番号</th><th>品名</th><th>形状・種類・模様・品質等</th><th>件数</th><th>物品コード</th><th>点数</th><th>拾得日時</th><th>拾得場所</th><th>権利</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
