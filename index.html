@@ -123,13 +123,6 @@
     .valuable-check-group label { display: flex; align-items: center; gap: 5px; font-weight: normal; font-size: 0.85rem; margin: 0; }
     .valuable-check-group input { width: auto; margin: 0; }
 
-    .lost-reminder-card { border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; cursor: pointer; border: 1px solid transparent; }
-    .lost-reminder-card .lost-reminder-title { font-weight: bold; font-size: 0.9rem; margin-bottom: 2px; }
-    .lost-reminder-card .lost-reminder-desc { font-size: 0.8rem; }
-    .lost-reminder-info { background: #e7f1ff; border-color: #b6d4fe; color: #084298; }
-    .lost-reminder-warn { background: #fff3cd; border-color: #ffe69c; color: #664d03; }
-    .lost-reminder-danger { background: #f8d7da; border-color: #f1aeb5; color: #842029; }
-    .lost-filter-banner { display: flex; justify-content: space-between; align-items: center; background: #e9ecef; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.85rem; }
 
     .police-form-item-row { border: 1px solid #e1e4e8; border-radius: 8px; padding: 10px; margin-bottom: 8px; }
     .police-form-item-row .pf-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
@@ -199,9 +192,35 @@
     .call-ctrl-btn.off { background: rgba(220,53,69,0.75); }
     .call-ctrl-btn.call-hangup { background: #dc3545; }
     .incoming-call-name { font-size: 1.05rem; font-weight: bold; margin: 6px 0 14px; }
+
+    /* ===== プルリフレッシュ (どのページからでも実行可能) ===== */
+    #pullRefreshIndicator {
+      position: fixed; top: 0; left: 50%; width: 100%; max-width: 600px; z-index: 100;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      height: 56px; margin-top: -56px; transform: translateX(-50%);
+      background: #f4f6f8; color: #555; font-size: 0.85rem; font-weight: bold;
+      transition: none; pointer-events: none;
+    }
+    #pullRefreshIndicator.animating { transition: margin-top 0.2s ease; }
+    #pullRefreshIndicator .pr-spinner {
+      width: 18px; height: 18px; border-radius: 50%; border: 3px solid #ccc; border-top-color: #007bff;
+      display: none;
+    }
+    #pullRefreshIndicator.refreshing .pr-spinner { display: block; animation: pr-spin 0.7s linear infinite; }
+    #pullRefreshIndicator.refreshing .pr-arrow { display: none; }
+    .pr-arrow { transition: transform 0.2s ease; font-size: 1.1rem; }
+    .pr-arrow.flip { transform: rotate(180deg); }
+    @keyframes pr-spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
+
+  <!-- ===== プルリフレッシュ インジケーター (どのページからでも引っ張って更新できる) ===== -->
+  <div id="pullRefreshIndicator">
+    <span class="pr-spinner"></span>
+    <span class="pr-arrow">↓</span>
+    <span id="pullRefreshLabel">引っ張って更新</span>
+  </div>
 
   <!-- ===== ホーム: 機能一覧グリッド ===== -->
   <div data-view="home" class="active-view">
@@ -500,8 +519,7 @@
       </div>
     </details>
     <button class="btn-outline" style="width: 100%; margin-bottom: 12px;" onclick="openPoliceFormComposer()">🚔 占有者拾得物届出書を作成・印刷</button>
-    <div id="lostReminders"></div>
-    <div id="lostFilterBanner" style="display:none;"></div>
+    <p class="status" style="margin-top: -4px;">📅🗑️🚔 月末・保管期限・警察届出のリマインドは📝連絡ノート・💬チャットルームに自動投稿されます。</p>
     <div id="lostList"></div>
   </div>
 
@@ -1004,7 +1022,7 @@
     let chatMessages = [];
     let lostItems = [];
     let lostFoundSettings = { storeName: '', storeAddress: '', storePhone: '', occupantCode: '', defaultRights: 'yuken', handoverFormFileUrl: '', handoverFormFileName: '' };
-    let lostFilterMode = null;
+    let lostMonthEndReminderPosted = {};
     let policeFormCandidates = [];
     let lostItemNames = [];
     let lostLocationNames = [];
@@ -1144,8 +1162,11 @@
         lostLocationNames = Array.isArray(data.lostLocationNames) ? data.lostLocationNames : [];
         renderLostNameDatalists();
 
+        lostMonthEndReminderPosted = (data.lostMonthEndReminderPosted && typeof data.lostMonthEndReminderPosted === 'object') ? data.lostMonthEndReminderPosted : {};
+
         renderAdminChatUI();
         renderLostList();
+        checkAndPostLostReminders();
       });
 
       db.collection('notebookEntries').orderBy('createdAt', 'desc').limit(200).onSnapshot(snap => {
@@ -1181,6 +1202,7 @@
       db.collection('lostItems').orderBy('createdAt', 'desc').limit(300).onSnapshot(snap => {
         lostItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         renderLostList();
+        checkAndPostLostReminders();
       });
 
       db.collection('trainingSteps').orderBy('createdAt', 'asc').onSnapshot(snap => {
@@ -2164,6 +2186,9 @@
         itemCode: '',
         points: '',
         policeReportedAt: null,
+        disposalReminderPostedAt: null,
+        policeReminderPostedAt: null,
+        policeOverdueReminderPostedAt: null,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       };
 
@@ -2262,82 +2287,70 @@
         item.status === 'stored' && !item.policeReportedAt;
     }
 
-    function renderLostReminders() {
-      const container = document.getElementById('lostReminders');
-      if (!container) return;
-      const stored = visibleForActiveStore(lostItems).filter(i => i.status === 'stored');
-      container.innerHTML = '';
+    // ===== 忘れ物リマインドの自動投稿 (連絡ノート・チャットルーム) =====
+    async function postLostReminderMessage(store, text) {
+      const base = { text, store: store || '', createdAt: firebase.firestore.FieldValue.serverTimestamp() };
+      await db.collection('notebookEntries').add({ ...base, type: 'note', author: '🔔 自動リマインド' });
+      await db.collection('chatMessages').add({ ...base, sender: '🔔 自動リマインド' });
+    }
 
-      const today = new Date();
-      const lastDateOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-      if (today.getDate() >= lastDateOfMonth - 2) {
-        const monthPrefix = today.toISOString().slice(0, 7);
-        const thisMonthCount = stored.filter(i => (i.foundDate || '').startsWith(monthPrefix)).length;
-        const card = document.createElement('div');
-        card.className = 'lost-reminder-card lost-reminder-info';
-        card.innerHTML = `<div class="lost-reminder-title">📅 月末リマインド</div><div class="lost-reminder-desc">今月分の忘れ物（${thisMonthCount}件）をまとめて確認しましょう。タップすると今月分だけ表示します。</div>`;
-        card.onclick = () => { lostFilterMode = 'thisMonth'; renderLostList(); };
-        container.appendChild(card);
-      }
+    let checkingLostReminders = false;
+    async function checkAndPostLostReminders() {
+      if (!db || checkingLostReminders) return;
+      checkingLostReminders = true;
+      try {
+        // 月末リマインド（店舗ごとに月1回だけ投稿）
+        const today = new Date();
+        const lastDateOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+        if (today.getDate() >= lastDateOfMonth - 2) {
+          const monthKey = today.toISOString().slice(0, 7);
+          const targets = storesList.length > 0 ? storesList : [''];
+          const postedMonths = { ...(lostMonthEndReminderPosted || {}) };
+          let changed = false;
+          for (const store of targets) {
+            if (postedMonths[store] === monthKey) continue;
+            const count = lostItems.filter(i => (i.store || '') === store && i.status === 'stored' && (i.foundDate || '').startsWith(monthKey)).length;
+            await postLostReminderMessage(store, `📅 今月分の忘れ物は${count}件です。月末のまとめ・確認をお願いします。`);
+            postedMonths[store] = monthKey;
+            changed = true;
+          }
+          if (changed) {
+            await db.collection('appSettings').doc('general').set({ lostMonthEndReminderPosted: postedMonths }, { merge: true });
+          }
+        }
 
-      const overdue3m = stored.filter(i => isOlderThanMonths(i.foundDate, 3));
-      if (overdue3m.length > 0) {
-        const card = document.createElement('div');
-        card.className = 'lost-reminder-card lost-reminder-warn';
-        card.innerHTML = `<div class="lost-reminder-title">🗑️ 保管期限リマインド</div><div class="lost-reminder-desc">保管から3ヶ月を超えた忘れ物が${overdue3m.length}件あります。廃棄を検討してください。タップして対象を表示します。</div>`;
-        card.onclick = () => { lostFilterMode = 'overdue3m'; renderLostList(); };
-        container.appendChild(card);
-      }
+        // 保管期限リマインド（3ヶ月超・アイテムごとに1回だけ）
+        const overdueToPost = lostItems.filter(i => i.status === 'stored' && isOlderThanMonths(i.foundDate, 3) && !i.disposalReminderPostedAt);
+        for (const item of overdueToPost) {
+          await postLostReminderMessage(item.store, `🗑️「${item.title}」は保管から3ヶ月を超えました。廃棄を検討してください。（発見日: ${item.foundDate || '不明'}）`);
+          await db.collection('lostItems').doc(item.id).update({ disposalReminderPostedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        }
 
-      const policeNeeded = stored.filter(needsPoliceReport);
-      if (policeNeeded.length > 0) {
-        const overdueCount = policeNeeded.filter(i => { const d = daysSinceFound(i.foundDate); return d !== null && d > 7; }).length;
-        const card = document.createElement('div');
-        card.className = 'lost-reminder-card ' + (overdueCount > 0 ? 'lost-reminder-danger' : 'lost-reminder-warn');
-        const title = overdueCount > 0 ? `🚨 貴重品の警察届出期限を${overdueCount}件超過しています` : `🚔 貴重品の警察届出リマインド`;
-        card.innerHTML = `<div class="lost-reminder-title">${title}</div><div class="lost-reminder-desc">貴重品タグ付きの未届出の忘れ物が${policeNeeded.length}件あります（拾得から1週間以内に警察署への届出が必要です）。タップして対象を表示します。</div>`;
-        card.onclick = () => { lostFilterMode = 'policeNeeded'; renderLostList(); };
-        container.appendChild(card);
+        // 貴重品の警察届出リマインド（登録時に1回、1週間超過でもう1回）
+        for (const item of lostItems.filter(needsPoliceReport)) {
+          if (!item.policeReminderPostedAt) {
+            await postLostReminderMessage(item.store, `🚔「${item.title}」は貴重品タグ付きです。1週間以内に警察署へ届出してください。`);
+            await db.collection('lostItems').doc(item.id).update({ policeReminderPostedAt: firebase.firestore.FieldValue.serverTimestamp() });
+          } else if (!item.policeOverdueReminderPostedAt) {
+            const days = daysSinceFound(item.foundDate);
+            if (days !== null && days > 7) {
+              await postLostReminderMessage(item.store, `🚨「${item.title}」の警察届出期限（1週間）を超過しています。至急、占有者拾得物届出書を作成してください。`);
+              await db.collection('lostItems').doc(item.id).update({ policeOverdueReminderPostedAt: firebase.firestore.FieldValue.serverTimestamp() });
+            }
+          }
+        }
+      } finally {
+        checkingLostReminders = false;
       }
     }
 
     function renderLostList() {
       const container = document.getElementById('lostList');
       if (!container) return;
-      renderLostReminders();
 
-      let visible = visibleForActiveStore(lostItems);
-      const banner = document.getElementById('lostFilterBanner');
-      if (lostFilterMode) {
-        const monthPrefix = new Date().toISOString().slice(0, 7);
-        let label = '';
-        if (lostFilterMode === 'thisMonth') {
-          visible = visible.filter(i => (i.foundDate || '').startsWith(monthPrefix));
-          label = '📅 今月分のみ表示中';
-        } else if (lostFilterMode === 'overdue3m') {
-          visible = visible.filter(i => i.status === 'stored' && isOlderThanMonths(i.foundDate, 3));
-          label = '🗑️ 保管3ヶ月超のみ表示中';
-        } else if (lostFilterMode === 'policeNeeded') {
-          visible = visible.filter(needsPoliceReport);
-          label = '🚔 警察届出が必要な貴重品のみ表示中';
-        }
-        banner.innerHTML = '';
-        const labelSpan = document.createElement('span');
-        labelSpan.innerText = label;
-        banner.appendChild(labelSpan);
-        const clearBtn = document.createElement('button');
-        clearBtn.className = 'btn-clear';
-        clearBtn.innerText = 'フィルタ解除';
-        clearBtn.onclick = () => { lostFilterMode = null; renderLostList(); };
-        banner.appendChild(clearBtn);
-        banner.style.display = 'flex';
-      } else {
-        banner.style.display = 'none';
-        banner.innerHTML = '';
-      }
-
+      const visible = visibleForActiveStore(lostItems);
       if (visible.length === 0) {
-        container.innerHTML = `<div class="empty-state">${lostFilterMode ? '該当する忘れ物はありません' : '忘れ物の記録はまだありません'}</div>`;
+        container.innerHTML = '<div class="empty-state">忘れ物の記録はまだありません</div>';
         return;
       }
       container.innerHTML = '';
@@ -3781,6 +3794,75 @@
       closeSignaturePad();
       if (callback) callback(dataUrl);
     }
+
+    // ===== プルリフレッシュ (どの画面からでも上端を引っ張ると再読み込み) =====
+    (function setupPullToRefresh() {
+      const THRESHOLD = 70;
+      const MAX_PULL = 110;
+      let startY = 0;
+      let pulling = false;
+      let refreshing = false;
+      const indicator = document.getElementById('pullRefreshIndicator');
+      const label = document.getElementById('pullRefreshLabel');
+      const arrow = indicator.querySelector('.pr-arrow');
+
+      function isBlockedTarget(target) {
+        return !!target.closest('textarea, input, select, canvas, .sig-overlay.open, .call-overlay-full, .side-drawer.open');
+      }
+
+      function onTouchStart(e) {
+        if (refreshing) return;
+        if (window.scrollY > 0) return;
+        if (isBlockedTarget(e.target)) return;
+        if (e.touches.length !== 1) return;
+        startY = e.touches[0].clientY;
+        pulling = true;
+        indicator.classList.remove('animating');
+      }
+
+      function onTouchMove(e) {
+        if (!pulling || refreshing) return;
+        const delta = e.touches[0].clientY - startY;
+        if (delta <= 0) { pulling = false; indicator.style.marginTop = '-56px'; return; }
+        if (window.scrollY > 0) { pulling = false; return; }
+        e.preventDefault();
+        const pull = Math.min(delta, MAX_PULL);
+        indicator.style.marginTop = (pull - 56) + 'px';
+        if (pull >= THRESHOLD) {
+          label.innerText = '離して更新';
+          arrow.classList.add('flip');
+        } else {
+          label.innerText = '引っ張って更新';
+          arrow.classList.remove('flip');
+        }
+      }
+
+      function onTouchEnd() {
+        if (!pulling || refreshing) { pulling = false; return; }
+        pulling = false;
+        indicator.classList.add('animating');
+        const pulledEnough = indicator.style.marginTop && (parseFloat(indicator.style.marginTop) + 56) >= THRESHOLD;
+        if (pulledEnough) {
+          refreshing = true;
+          indicator.classList.add('refreshing');
+          indicator.style.marginTop = '0px';
+          label.innerText = '更新中...';
+          setTimeout(() => {
+            const url = new URL(window.location.href);
+            url.searchParams.set('_r', Date.now());
+            window.location.href = url.toString();
+          }, 250);
+        } else {
+          indicator.style.marginTop = '-56px';
+          arrow.classList.remove('flip');
+        }
+      }
+
+      document.addEventListener('touchstart', onTouchStart, { passive: true });
+      document.addEventListener('touchmove', onTouchMove, { passive: false });
+      document.addEventListener('touchend', onTouchEnd, { passive: true });
+      document.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    })();
   </script>
 </body>
 </html>
