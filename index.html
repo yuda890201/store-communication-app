@@ -118,6 +118,45 @@
     .status-disposed { background: #f1f1f1; color: #666; }
     .item-photo { width: 100%; max-height: 200px; object-fit: cover; border-radius: 8px; margin-bottom: 8px; }
     .item-title { font-size: 1.02rem; font-weight: bold; margin-bottom: 4px; }
+    .valuable-badge { display: inline-block; font-size: 0.7rem; font-weight: bold; padding: 2px 8px; border-radius: 10px; margin: 0 4px 4px 0; background: #e7f1ff; color: #0d6efd; }
+    .valuable-check-group { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+    .valuable-check-group label { display: flex; align-items: center; gap: 5px; font-weight: normal; font-size: 0.85rem; margin: 0; }
+    .valuable-check-group input { width: auto; margin: 0; }
+
+    .lost-reminder-card { border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; cursor: pointer; border: 1px solid transparent; }
+    .lost-reminder-card .lost-reminder-title { font-weight: bold; font-size: 0.9rem; margin-bottom: 2px; }
+    .lost-reminder-card .lost-reminder-desc { font-size: 0.8rem; }
+    .lost-reminder-info { background: #e7f1ff; border-color: #b6d4fe; color: #084298; }
+    .lost-reminder-warn { background: #fff3cd; border-color: #ffe69c; color: #664d03; }
+    .lost-reminder-danger { background: #f8d7da; border-color: #f1aeb5; color: #842029; }
+    .lost-filter-banner { display: flex; justify-content: space-between; align-items: center; background: #e9ecef; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.85rem; }
+
+    .police-form-item-row { border: 1px solid #e1e4e8; border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+    .police-form-item-row .pf-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
+    .police-form-item-row .pf-fields input, .police-form-item-row .pf-fields select { margin-bottom: 0; font-size: 0.85rem; padding: 6px; }
+    .police-form-item-row label.pf-check { display: flex; align-items: center; gap: 6px; font-weight: bold; font-size: 0.9rem; margin: 0; }
+    .police-form-item-row label.pf-check input { width: auto; margin: 0; }
+
+    /* ===== 印刷 (落とし物メモ・占有者拾得物届出書) ===== */
+    #printArea { display: none; }
+    .print-doc { font-family: "Hiragino Mincho ProN", "Yu Mincho", serif; color: #000; }
+    .print-doc h1 { font-size: 1.3rem; text-align: center; margin: 0 0 14px; letter-spacing: 0.1em; }
+    .print-doc .print-store-header { text-align: right; font-size: 0.85rem; margin-bottom: 10px; line-height: 1.6; }
+    .print-doc .print-field-row { display: flex; gap: 14px; margin-bottom: 6px; font-size: 0.9rem; }
+    .print-doc .print-field-row span.pf-label { font-weight: bold; margin-right: 4px; }
+    .print-doc table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.72rem; }
+    .print-doc table th, .print-doc table td { border: 1px solid #000; padding: 4px; text-align: center; vertical-align: middle; }
+    .print-doc table thead { display: table-header-group; }
+    .print-doc .print-memo-photo { max-width: 220px; max-height: 220px; display: block; margin: 10px 0; }
+    .print-doc .print-signature-img { max-width: 260px; max-height: 120px; display: block; margin-top: 6px; border: 1px solid #ccc; }
+    .print-doc .print-note { font-size: 0.72rem; margin-top: 12px; }
+
+    @media print {
+      body * { visibility: hidden; }
+      #printArea, #printArea * { visibility: visible; }
+      #printArea { display: block; position: absolute; top: 0; left: 0; width: 100%; }
+      body { background: white; padding: 0; margin: 0; max-width: none; }
+    }
 
     /* ===== トレーニング進捗 ===== */
     .step-row { background: white; border-radius: 10px; padding: 12px; margin-bottom: 10px; border: 1px solid #e1e4e8; }
@@ -409,12 +448,25 @@
         <input type="text" id="lostLocationInput" placeholder="例: レジ横の椅子">
         <label for="lostDateInput">発見日</label>
         <input type="date" id="lostDateInput">
+        <label>貴重品タグ（該当すれば選択・複数可）</label>
+        <div class="valuable-check-group" id="lostValuableTagGroup">
+          <label><input type="checkbox" value="スマホ">📱 スマホ</label>
+          <label><input type="checkbox" value="カード">💳 カード</label>
+          <label><input type="checkbox" value="財布">👛 財布</label>
+          <label><input type="checkbox" value="鍵">🔑 鍵</label>
+          <label><input type="checkbox" value="身分証">🪪 身分証</label>
+          <label><input type="checkbox" value="その他貴重品">💎 その他貴重品</label>
+        </div>
+        <p class="status" style="margin-top: -4px;">貴重品タグを付けると、警察署への届出（1週間以内）のリマインドが表示されます。</p>
         <label for="lostPhotoInput">写真（任意）</label>
         <input type="file" id="lostPhotoInput" accept="image/*" capture="environment">
         <button class="btn-primary" onclick="addLostItem()">🎒 登録する</button>
         <div id="lostUploadStatus" class="status"></div>
       </div>
     </details>
+    <button class="btn-outline" style="width: 100%; margin-bottom: 12px;" onclick="openPoliceFormComposer()">🚔 占有者拾得物届出書を作成・印刷</button>
+    <div id="lostReminders"></div>
+    <div id="lostFilterBanner" style="display:none;"></div>
     <div id="lostList"></div>
   </div>
 
@@ -702,6 +754,33 @@
     </details>
 
     <details>
+      <summary>🚔 忘れ物・警察届出設定</summary>
+      <div style="margin-top: 10px;">
+        <p style="font-size: 0.8rem; color: #666;">占有者拾得物届出書・落とし物メモの印刷に使う店舗情報です。</p>
+        <label for="lostStoreNameInput">店名</label>
+        <input type="text" id="lostStoreNameInput" placeholder="例: ○○store 渋谷店">
+        <label for="lostStoreAddressInput">住所</label>
+        <input type="text" id="lostStoreAddressInput" placeholder="例: 東京都渋谷区○○1-2-3">
+        <label for="lostStorePhoneInput">電話番号</label>
+        <input type="text" id="lostStorePhoneInput" placeholder="例: 03-0000-0000">
+        <label for="lostOccupantCodeInput">占有者コード（警察署で発行されている場合）</label>
+        <input type="text" id="lostOccupantCodeInput" placeholder="例: 12345">
+        <label for="lostDefaultRightsInput">権利区分（デフォルト）</label>
+        <select id="lostDefaultRightsInput">
+          <option value="yuken">1. 有権</option>
+          <option value="shikken">2. 失権</option>
+        </select>
+        <button class="btn-secondary" onclick="saveLostFoundSettings()">💾 保存</button>
+
+        <p style="font-size: 0.8rem; color: #666; margin-top: 14px;">落とし物交付表（お店で使っている様式やお客様への案内文など）のファイルを保管しておき、必要なときにスタッフが参照・ダウンロードできます。印刷される落とし物メモ・届出書とは別の、参考資料としての保管用です。</p>
+        <label for="handoverFormFileInput">落とし物交付表ファイル（画像・PDFなど）</label>
+        <input type="file" id="handoverFormFileInput" accept="image/*,application/pdf" onchange="uploadHandoverFormFile(this.files)">
+        <div id="handoverFormFileStatus" class="status"></div>
+        <div id="handoverFormFileLink"></div>
+      </div>
+    </details>
+
+    <details>
       <summary>🎓 トレーニング機能の名称</summary>
       <div style="margin-top: 10px;">
         <p style="font-size: 0.8rem; color: #666;">この店舗独自の資格・研修制度名に変更できます（例: 社内の正式名称）。設定は接続中のFirebaseに保存され、この店舗の全端末に共有されます。</p>
@@ -764,6 +843,26 @@
       </div>
     </div>
   </div>
+
+  <!-- ===== 占有者拾得物届出書 作成モーダル ===== -->
+  <div id="policeFormOverlay" class="sig-overlay">
+    <div class="sig-modal" style="width: min(96%, 480px);">
+      <h2>🚔 占有者拾得物届出書を作成</h2>
+      <div class="sig-hint">未届出の忘れ物から、届け出る項目にチェックを入れてください。印刷すると、選択した項目が「届出済み」になります。</div>
+      <label for="pfDate">届出日</label>
+      <input type="date" id="pfDate">
+      <label for="pfReceiptNumber">受理番号（警察署で記入・空欄可）</label>
+      <input type="text" id="pfReceiptNumber" placeholder="例: 123">
+      <div id="policeFormItemList"></div>
+      <div class="sig-actions">
+        <button class="btn-clear" onclick="closePoliceFormComposer()">閉じる</button>
+        <button class="btn-primary" style="width: auto;" onclick="printPoliceForm()">🖨️ 印刷する</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 印刷用エリア (画面には表示されず、印刷時のみ表示) ===== -->
+  <div id="printArea"></div>
 
   <script src="vendor/jszip.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
@@ -867,6 +966,9 @@
     let manuals = [];
     let chatMessages = [];
     let lostItems = [];
+    let lostFoundSettings = { storeName: '', storeAddress: '', storePhone: '', occupantCode: '', defaultRights: 'yuken', handoverFormFileUrl: '', handoverFormFileName: '' };
+    let lostFilterMode = null;
+    let policeFormCandidates = [];
     let trainingSteps = [];
     let trainingCompletions = [];
 
@@ -975,7 +1077,32 @@
         }
         renderStoreSelectOptions();
 
+        lostFoundSettings = {
+          storeName: data.lostStoreName || '',
+          storeAddress: data.lostStoreAddress || '',
+          storePhone: data.lostStorePhone || '',
+          occupantCode: data.lostOccupantCode || '',
+          defaultRights: data.lostDefaultRights || 'yuken',
+          handoverFormFileUrl: data.handoverFormFileUrl || '',
+          handoverFormFileName: data.handoverFormFileName || ''
+        };
+        ['lostStoreNameInput', 'lostStoreAddressInput', 'lostStorePhoneInput', 'lostOccupantCodeInput'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el && !el.dataset.userEdited) {
+            el.value = ({
+              lostStoreNameInput: lostFoundSettings.storeName,
+              lostStoreAddressInput: lostFoundSettings.storeAddress,
+              lostStorePhoneInput: lostFoundSettings.storePhone,
+              lostOccupantCodeInput: lostFoundSettings.occupantCode
+            })[id];
+          }
+        });
+        const rightsInput = document.getElementById('lostDefaultRightsInput');
+        if (rightsInput && !rightsInput.dataset.userEdited) rightsInput.value = lostFoundSettings.defaultRights;
+        renderHandoverFormFileLink();
+
         renderAdminChatUI();
+        renderLostList();
       });
 
       db.collection('notebookEntries').orderBy('createdAt', 'desc').limit(200).onSnapshot(snap => {
@@ -1056,6 +1183,54 @@
       const stores = input.value.split('\n').map(s => s.trim()).filter(Boolean);
       input.dataset.userEdited = '1';
       db.collection('appSettings').doc('general').set({ stores }, { merge: true });
+    }
+
+    // ===== 忘れ物・警察届出設定 =====
+    function saveLostFoundSettings() {
+      if (!requireDb()) return;
+      const ids = ['lostStoreNameInput', 'lostStoreAddressInput', 'lostStorePhoneInput', 'lostOccupantCodeInput', 'lostDefaultRightsInput'];
+      ids.forEach(id => { document.getElementById(id).dataset.userEdited = '1'; });
+      db.collection('appSettings').doc('general').set({
+        lostStoreName: document.getElementById('lostStoreNameInput').value.trim(),
+        lostStoreAddress: document.getElementById('lostStoreAddressInput').value.trim(),
+        lostStorePhone: document.getElementById('lostStorePhoneInput').value.trim(),
+        lostOccupantCode: document.getElementById('lostOccupantCodeInput').value.trim(),
+        lostDefaultRights: document.getElementById('lostDefaultRightsInput').value
+      }, { merge: true });
+    }
+
+    async function uploadHandoverFormFile(fileList) {
+      if (!requireDb()) return;
+      const file = fileList && fileList[0];
+      if (!file) return;
+      const statusEl = document.getElementById('handoverFormFileStatus');
+      try {
+        statusEl.innerText = 'アップロード中...';
+        const ref = storage.ref().child('settings/handoverForm_' + Date.now() + '_' + file.name);
+        const snap = await ref.put(file);
+        const url = await snap.ref.getDownloadURL();
+        await db.collection('appSettings').doc('general').set({
+          handoverFormFileUrl: url, handoverFormFileName: file.name
+        }, { merge: true });
+        statusEl.innerText = '保存しました';
+      } catch (e) {
+        statusEl.innerText = 'アップロードに失敗しました: ' + e.message;
+      }
+      document.getElementById('handoverFormFileInput').value = '';
+    }
+
+    function renderHandoverFormFileLink() {
+      const el = document.getElementById('handoverFormFileLink');
+      if (!el) return;
+      if (!lostFoundSettings.handoverFormFileUrl) { el.innerHTML = ''; return; }
+      el.innerHTML = '';
+      const link = document.createElement('a');
+      link.href = lostFoundSettings.handoverFormFileUrl;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.className = 'dm-attachment-file';
+      link.innerText = '📄 ' + (lostFoundSettings.handoverFormFileName || '交付表ファイル');
+      el.appendChild(link);
     }
 
     function chooseStore(name) {
@@ -1892,6 +2067,8 @@
       const title = titleInput.value.trim();
       if (!title) return;
 
+      const valuableTags = Array.from(document.querySelectorAll('#lostValuableTagGroup input:checked')).map(el => el.value);
+
       const data = {
         title,
         description: descInput.value.trim(),
@@ -1900,6 +2077,11 @@
         status: 'stored',
         photoUrl: '',
         store: activeStore,
+        valuableTags,
+        rightsType: lostFoundSettings.defaultRights || 'yuken',
+        itemCode: '',
+        points: '',
+        policeReportedAt: null,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       };
 
@@ -1922,15 +2104,19 @@
       descInput.value = '';
       locationInput.value = '';
       photoInput.value = '';
+      document.querySelectorAll('#lostValuableTagGroup input:checked').forEach(el => { el.checked = false; });
     }
 
     function markLostItemReturned(id) {
       const returnedTo = prompt('引き渡し先（氏名など）を入力してください');
       if (returnedTo === null) return;
-      db.collection('lostItems').doc(id).update({
-        status: 'returned',
-        returnedTo: returnedTo.trim(),
-        returnedAt: firebase.firestore.FieldValue.serverTimestamp()
+      openSignaturePad('お受け取りのサイン（お客様がご記入ください）', (dataUrl) => {
+        db.collection('lostItems').doc(id).update({
+          status: 'returned',
+          returnedTo: returnedTo.trim(),
+          returnedSignatureDataUrl: dataUrl,
+          returnedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
       });
     }
 
@@ -1953,12 +2139,107 @@
       return { text: '📦 保管中', cls: 'status-stored' };
     }
 
+    // ===== 忘れ物リマインド (月末まとめ・3ヶ月保管・貴重品の警察届出) =====
+    function isOlderThanMonths(dateStr, months) {
+      if (!dateStr) return false;
+      const found = new Date(dateStr + 'T00:00:00');
+      if (isNaN(found)) return false;
+      const cutoff = new Date();
+      cutoff.setMonth(cutoff.getMonth() - months);
+      return found < cutoff;
+    }
+
+    function daysSinceFound(dateStr) {
+      if (!dateStr) return null;
+      const found = new Date(dateStr + 'T00:00:00');
+      if (isNaN(found)) return null;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      found.setHours(0, 0, 0, 0);
+      return Math.floor((today - found) / (1000 * 60 * 60 * 24));
+    }
+
+    function needsPoliceReport(item) {
+      return Array.isArray(item.valuableTags) && item.valuableTags.length > 0 &&
+        item.status === 'stored' && !item.policeReportedAt;
+    }
+
+    function renderLostReminders() {
+      const container = document.getElementById('lostReminders');
+      if (!container) return;
+      const stored = visibleForActiveStore(lostItems).filter(i => i.status === 'stored');
+      container.innerHTML = '';
+
+      const today = new Date();
+      const lastDateOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+      if (today.getDate() >= lastDateOfMonth - 2) {
+        const monthPrefix = today.toISOString().slice(0, 7);
+        const thisMonthCount = stored.filter(i => (i.foundDate || '').startsWith(monthPrefix)).length;
+        const card = document.createElement('div');
+        card.className = 'lost-reminder-card lost-reminder-info';
+        card.innerHTML = `<div class="lost-reminder-title">📅 月末リマインド</div><div class="lost-reminder-desc">今月分の忘れ物（${thisMonthCount}件）をまとめて確認しましょう。タップすると今月分だけ表示します。</div>`;
+        card.onclick = () => { lostFilterMode = 'thisMonth'; renderLostList(); };
+        container.appendChild(card);
+      }
+
+      const overdue3m = stored.filter(i => isOlderThanMonths(i.foundDate, 3));
+      if (overdue3m.length > 0) {
+        const card = document.createElement('div');
+        card.className = 'lost-reminder-card lost-reminder-warn';
+        card.innerHTML = `<div class="lost-reminder-title">🗑️ 保管期限リマインド</div><div class="lost-reminder-desc">保管から3ヶ月を超えた忘れ物が${overdue3m.length}件あります。廃棄を検討してください。タップして対象を表示します。</div>`;
+        card.onclick = () => { lostFilterMode = 'overdue3m'; renderLostList(); };
+        container.appendChild(card);
+      }
+
+      const policeNeeded = stored.filter(needsPoliceReport);
+      if (policeNeeded.length > 0) {
+        const overdueCount = policeNeeded.filter(i => { const d = daysSinceFound(i.foundDate); return d !== null && d > 7; }).length;
+        const card = document.createElement('div');
+        card.className = 'lost-reminder-card ' + (overdueCount > 0 ? 'lost-reminder-danger' : 'lost-reminder-warn');
+        const title = overdueCount > 0 ? `🚨 貴重品の警察届出期限を${overdueCount}件超過しています` : `🚔 貴重品の警察届出リマインド`;
+        card.innerHTML = `<div class="lost-reminder-title">${title}</div><div class="lost-reminder-desc">貴重品タグ付きの未届出の忘れ物が${policeNeeded.length}件あります（拾得から1週間以内に警察署への届出が必要です）。タップして対象を表示します。</div>`;
+        card.onclick = () => { lostFilterMode = 'policeNeeded'; renderLostList(); };
+        container.appendChild(card);
+      }
+    }
+
     function renderLostList() {
       const container = document.getElementById('lostList');
       if (!container) return;
-      const visible = visibleForActiveStore(lostItems);
+      renderLostReminders();
+
+      let visible = visibleForActiveStore(lostItems);
+      const banner = document.getElementById('lostFilterBanner');
+      if (lostFilterMode) {
+        const monthPrefix = new Date().toISOString().slice(0, 7);
+        let label = '';
+        if (lostFilterMode === 'thisMonth') {
+          visible = visible.filter(i => (i.foundDate || '').startsWith(monthPrefix));
+          label = '📅 今月分のみ表示中';
+        } else if (lostFilterMode === 'overdue3m') {
+          visible = visible.filter(i => i.status === 'stored' && isOlderThanMonths(i.foundDate, 3));
+          label = '🗑️ 保管3ヶ月超のみ表示中';
+        } else if (lostFilterMode === 'policeNeeded') {
+          visible = visible.filter(needsPoliceReport);
+          label = '🚔 警察届出が必要な貴重品のみ表示中';
+        }
+        banner.innerHTML = '';
+        const labelSpan = document.createElement('span');
+        labelSpan.innerText = label;
+        banner.appendChild(labelSpan);
+        const clearBtn = document.createElement('button');
+        clearBtn.className = 'btn-clear';
+        clearBtn.innerText = 'フィルタ解除';
+        clearBtn.onclick = () => { lostFilterMode = null; renderLostList(); };
+        banner.appendChild(clearBtn);
+        banner.style.display = 'flex';
+      } else {
+        banner.style.display = 'none';
+        banner.innerHTML = '';
+      }
+
       if (visible.length === 0) {
-        container.innerHTML = '<div class="empty-state">忘れ物の記録はまだありません</div>';
+        container.innerHTML = `<div class="empty-state">${lostFilterMode ? '該当する忘れ物はありません' : '忘れ物の記録はまだありません'}</div>`;
         return;
       }
       container.innerHTML = '';
@@ -1984,6 +2265,25 @@
         titleRow.appendChild(badge);
         card.appendChild(titleRow);
 
+        if ((Array.isArray(item.valuableTags) && item.valuableTags.length > 0) || item.policeReportedAt) {
+          const tagsRow = document.createElement('div');
+          (item.valuableTags || []).forEach(tag => {
+            const b = document.createElement('span');
+            b.className = 'valuable-badge';
+            b.innerText = '💎 ' + tag;
+            tagsRow.appendChild(b);
+          });
+          if (item.policeReportedAt) {
+            const b = document.createElement('span');
+            b.className = 'valuable-badge';
+            b.style.background = '#d4edda';
+            b.style.color = '#155724';
+            b.innerText = '✅ 届出済み';
+            tagsRow.appendChild(b);
+          }
+          card.appendChild(tagsRow);
+        }
+
         const meta = document.createElement('div');
         meta.className = 'entry-meta';
         const metaParts = [];
@@ -2003,7 +2303,7 @@
         if (item.status === 'returned' && item.returnedTo) {
           const returnedInfo = document.createElement('div');
           returnedInfo.className = 'entry-meta';
-          returnedInfo.innerText = `引き渡し先: ${item.returnedTo}（${formatEntryTime(item, 'returnedAt')}）`;
+          returnedInfo.innerText = `引き渡し先: ${item.returnedTo}（${formatEntryTime(item, 'returnedAt')}）${item.returnedSignatureDataUrl ? ' ・ ✍️サイン済み' : ''}`;
           card.appendChild(returnedInfo);
         }
 
@@ -2022,6 +2322,12 @@
           disposeBtn.onclick = () => markLostItemDisposed(item.id);
           actions.appendChild(disposeBtn);
         }
+        const printBtn = document.createElement('button');
+        printBtn.className = 'btn-outline';
+        printBtn.innerText = '🖨️ メモを印刷';
+        printBtn.onclick = () => printLostItemMemo(item.id);
+        actions.appendChild(printBtn);
+
         const delBtn = document.createElement('button');
         delBtn.className = 'btn-clear';
         delBtn.innerText = '削除';
@@ -2031,6 +2337,185 @@
 
         container.appendChild(card);
       });
+    }
+
+    // ===== 印刷: 落とし物メモ =====
+    function printLostItemMemo(id) {
+      const item = lostItems.find(i => i.id === id);
+      if (!item) return;
+      const st = statusLabel(item.status);
+      const printArea = document.getElementById('printArea');
+      printArea.innerHTML = `
+        <div class="print-doc">
+          <div class="print-store-header">
+            ${escapeHtml(lostFoundSettings.storeName)}<br>
+            ${escapeHtml(lostFoundSettings.storeAddress)}<br>
+            TEL: ${escapeHtml(lostFoundSettings.storePhone)}
+          </div>
+          <h1>落 と し 物 メ モ</h1>
+          <div class="print-field-row"><span class="pf-label">品名:</span>${escapeHtml(item.title)}</div>
+          <div class="print-field-row"><span class="pf-label">特徴・メモ:</span>${escapeHtml(item.description || '')}</div>
+          <div class="print-field-row"><span class="pf-label">発見日:</span>${escapeHtml(item.foundDate || '')}　<span class="pf-label">発見場所:</span>${escapeHtml(item.foundLocation || '')}</div>
+          <div class="print-field-row"><span class="pf-label">貴重品タグ:</span>${(item.valuableTags || []).join('・') || 'なし'}</div>
+          <div class="print-field-row"><span class="pf-label">状態:</span>${st.text}</div>
+          ${item.photoUrl ? `<img class="print-memo-photo" src="${item.photoUrl}">` : ''}
+          ${item.status === 'returned' ? `
+            <div class="print-field-row"><span class="pf-label">引き渡し先:</span>${escapeHtml(item.returnedTo || '')}　<span class="pf-label">引き渡し日:</span>${formatEntryTime(item, 'returnedAt')}</div>
+            ${item.returnedSignatureDataUrl ? `<img class="print-signature-img" src="${item.returnedSignatureDataUrl}">` : ''}
+          ` : ''}
+          <div class="print-note">印刷日: ${new Date().toLocaleString('ja-JP')}</div>
+        </div>
+      `;
+      window.print();
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.innerText = str == null ? '' : String(str);
+      return div.innerHTML;
+    }
+
+    // ===== 占有者拾得物届出書 作成・印刷 =====
+    function openPoliceFormComposer() {
+      const stored = visibleForActiveStore(lostItems).filter(i => i.status === 'stored' && !i.policeReportedAt);
+      if (stored.length === 0) {
+        alert('届出可能な忘れ物（保管中・未届出のもの）がありません。');
+        return;
+      }
+      policeFormCandidates = stored.map(i => ({
+        id: i.id,
+        title: i.title,
+        description: i.description,
+        foundDate: i.foundDate,
+        foundLocation: i.foundLocation,
+        valuableTags: i.valuableTags || [],
+        include: needsPoliceReport(i),
+        itemCode: i.itemCode || '',
+        points: i.points || '',
+        rightsType: i.rightsType || lostFoundSettings.defaultRights || 'yuken'
+      }));
+      document.getElementById('pfDate').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('pfReceiptNumber').value = '';
+      renderPoliceFormComposerList();
+      document.getElementById('policeFormOverlay').classList.add('open');
+    }
+
+    function closePoliceFormComposer() {
+      document.getElementById('policeFormOverlay').classList.remove('open');
+    }
+
+    function renderPoliceFormComposerList() {
+      const container = document.getElementById('policeFormItemList');
+      container.innerHTML = '';
+      policeFormCandidates.forEach((item, idx) => {
+        const row = document.createElement('div');
+        row.className = 'police-form-item-row';
+
+        const checkLabel = document.createElement('label');
+        checkLabel.className = 'pf-check';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = item.include;
+        checkbox.onchange = () => { policeFormCandidates[idx].include = checkbox.checked; };
+        checkLabel.appendChild(checkbox);
+        const titleSpan = document.createElement('span');
+        titleSpan.innerText = item.title + (item.valuableTags.length > 0 ? ' 💎' + item.valuableTags.join('・') : '');
+        checkLabel.appendChild(titleSpan);
+        row.appendChild(checkLabel);
+
+        const fields = document.createElement('div');
+        fields.className = 'pf-fields';
+
+        const codeInput = document.createElement('input');
+        codeInput.type = 'text';
+        codeInput.placeholder = '物品コード';
+        codeInput.value = item.itemCode;
+        codeInput.oninput = () => { policeFormCandidates[idx].itemCode = codeInput.value; };
+        fields.appendChild(codeInput);
+
+        const pointsInput = document.createElement('input');
+        pointsInput.type = 'text';
+        pointsInput.placeholder = '点数';
+        pointsInput.value = item.points;
+        pointsInput.oninput = () => { policeFormCandidates[idx].points = pointsInput.value; };
+        fields.appendChild(pointsInput);
+
+        const rightsSelect = document.createElement('select');
+        rightsSelect.innerHTML = '<option value="yuken">1. 有権</option><option value="shikken">2. 失権</option>';
+        rightsSelect.value = item.rightsType;
+        rightsSelect.onchange = () => { policeFormCandidates[idx].rightsType = rightsSelect.value; };
+        fields.appendChild(rightsSelect);
+
+        row.appendChild(fields);
+        container.appendChild(row);
+      });
+    }
+
+    async function printPoliceForm() {
+      if (!requireDb()) return;
+      const selected = policeFormCandidates.filter(i => i.include);
+      if (selected.length === 0) { alert('届け出る項目を1件以上選択してください。'); return; }
+
+      const reportDate = document.getElementById('pfDate').value || new Date().toISOString().slice(0, 10);
+      const receiptNumber = document.getElementById('pfReceiptNumber').value.trim();
+      const [y, m, d] = reportDate.split('-');
+
+      const rows = selected.map((item, idx) => `
+        <tr>
+          <td>${idx + 1}</td>
+          <td>${escapeHtml(item.title)}</td>
+          <td>${escapeHtml(item.description || '')}</td>
+          <td>1</td>
+          <td>${escapeHtml(item.itemCode || '')}</td>
+          <td>${escapeHtml(String(item.points || ''))}</td>
+          <td>${escapeHtml(item.foundDate || '')}</td>
+          <td>${escapeHtml(item.foundLocation || '')}</td>
+          <td>${item.rightsType === 'shikken' ? '2.失権' : '1.有権'}</td>
+        </tr>
+      `).join('');
+
+      const printArea = document.getElementById('printArea');
+      printArea.innerHTML = `
+        <div class="print-doc">
+          <div class="print-field-row"><span class="pf-label">受理番号:</span>${escapeHtml(receiptNumber)}</div>
+          <div class="print-store-header">
+            住所: ${escapeHtml(lostFoundSettings.storeAddress)}<br>
+            店名: ${escapeHtml(lostFoundSettings.storeName)}<br>
+            電話: ${escapeHtml(lostFoundSettings.storePhone)}
+          </div>
+          <h1>占有者拾得物届出書</h1>
+          <div class="print-field-row">警察署長殿</div>
+          <div class="print-field-row">${escapeHtml(y)}年${escapeHtml(m)}月${escapeHtml(d)}日届出</div>
+          <div class="print-field-row"><span class="pf-label">占有者コード:</span>${escapeHtml(lostFoundSettings.occupantCode)}</div>
+          <table>
+            <thead>
+              <tr>
+                <th>明細番号</th><th>品名</th><th>形状・種類・模様・品質等</th><th>件数</th><th>物品コード</th><th>点数</th><th>拾得日</th><th>拾得場所</th><th>権利</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <div class="print-field-row" style="margin-top:10px;"><span class="pf-label">合計件数:</span>${selected.length}件</div>
+          <div class="print-note">
+            ○ 有権と失権とは区別して、別紙に記載してください<br>
+            ○ 5万円以上の現金及び物品の評価額5万円以上の物品については、1件ずつ別紙に記載してください。
+          </div>
+          <div class="print-note">印刷日: ${new Date().toLocaleString('ja-JP')}</div>
+        </div>
+      `;
+
+      for (const item of selected) {
+        await db.collection('lostItems').doc(item.id).update({
+          itemCode: item.itemCode,
+          points: item.points,
+          rightsType: item.rightsType,
+          policeReportedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          policeReceiptNumber: receiptNumber
+        });
+      }
+
+      closePoliceFormComposer();
+      window.print();
     }
 
     // ===== トレーニング進捗管理 (手書きサインで完了記録) =====
