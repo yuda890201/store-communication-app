@@ -170,6 +170,8 @@
     .sig-overlay.open { display: flex; }
     .sig-modal { background: white; border-radius: 12px; padding: 16px; width: min(94%, 400px); max-height: 90vh; overflow-y: auto; }
     .sig-modal h2 { margin-bottom: 4px; }
+    #pinLoginOverlay { z-index: 90; }
+    #pinLoginOverlay .sig-modal { text-align: center; }
     .sig-hint { font-size: 0.8rem; color: #666; margin-bottom: 10px; }
     .sig-canvas { width: 100%; height: 180px; border: 1px solid #ccc; border-radius: 8px; touch-action: none; background: #fff; display: block; }
     .sig-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
@@ -214,6 +216,19 @@
   </style>
 </head>
 <body>
+
+  <!-- ===== PINログイン (アプリ全体のアクセス制限) ===== -->
+  <div id="pinLoginOverlay" class="sig-overlay">
+    <div class="sig-modal">
+      <h2>🔒 ログイン</h2>
+      <p style="font-size: 0.8rem; color: #666; margin-bottom: 14px;">この店舗のPINコードを入力してください。</p>
+      <form id="pinLoginForm" onsubmit="handlePinLoginSubmit(event)">
+        <input type="password" id="pinLoginInput" placeholder="PINコード" autocomplete="off" autocapitalize="off" autocorrect="off" required>
+        <button type="submit" class="btn-primary">ログイン</button>
+      </form>
+      <div class="status" id="pinLoginStatus"></div>
+    </div>
+  </div>
 
   <!-- ===== プルリフレッシュ インジケーター (どのページからでも引っ張って更新できる) ===== -->
   <div id="pullRefreshIndicator">
@@ -861,7 +876,7 @@
     <details>
       <summary>🔥 Firebaseデータベース設定</summary>
       <div style="margin-top: 10px;">
-        <p style="font-size: 0.8rem; color: #666;">Firebaseコンソールでプロジェクトを作成し、Firestore Database・Authenticationの「匿名」および「メール/パスワード」プロバイダ・Storage（写真アップロード用）を用意した上で、ウェブアプリのConfigをここに貼り付けてください。通常の機能はログイン画面なしで端末が自動的に匿名認証されます（🔐管理者チャットのみ別途メールアドレスでのログインが必要です）。</p>
+        <p style="font-size: 0.8rem; color: #666;">Firebaseコンソールでプロジェクトを作成し、Firestore Database・Authenticationの「メール/パスワード」プロバイダ・Storage（写真アップロード用）を用意した上で、ウェブアプリのConfigをここに貼り付けてください。通常の機能はこの店舗共通のPINコードでログインします（🔐管理者チャットのみ別途、本人のメールアドレスでのログインが必要です）。</p>
         <label for="firebaseConfig">Firebase Config (JSON)</label>
         <textarea id="firebaseConfig" rows="6" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","storageBucket":"...","messagingSenderId":"...","appId":"..."}'></textarea>
         <button class="btn-secondary" onclick="saveFirebaseConfig()">💾 保存して接続</button>
@@ -1004,7 +1019,7 @@
       });
     });
 
-    // ===== Firebase (Firestore + Storage + 匿名認証) =====
+    // ===== Firebase (Firestore + Storage + 共通PINログイン) =====
     let db = null;
     let storage = null;
     let firebaseReady = false;
@@ -1040,9 +1055,41 @@
     let dmInboxChannels = [];
     let dmInboxUnsub = null;
 
+    // 共通PINログイン (店舗全体のアクセス制限) 用の状態
+    let sharedLoginEmail = null;
+    let sharedLoginPin = null;
+
     function setDbStatus(text) {
       document.getElementById('dbStatus').innerText = text;
       document.getElementById('dbStatusHome').innerText = text;
+    }
+
+    function isSharedLoginUser(user) {
+      return !!(user && !user.isAnonymous && sharedLoginEmail && user.email === sharedLoginEmail);
+    }
+
+    function showPinLoginOverlay(message) {
+      document.getElementById('pinLoginOverlay').classList.add('open');
+      document.getElementById('pinLoginStatus').innerText = message || '';
+    }
+
+    function hidePinLoginOverlay() {
+      document.getElementById('pinLoginOverlay').classList.remove('open');
+      document.getElementById('pinLoginInput').value = '';
+    }
+
+    function handlePinLoginSubmit(event) {
+      event.preventDefault();
+      const pin = document.getElementById('pinLoginInput').value.trim();
+      if (!pin) return;
+      document.getElementById('pinLoginStatus').innerText = 'ログイン中...';
+      firebase.auth().signInWithEmailAndPassword(sharedLoginEmail, pin)
+        .then(() => {
+          sharedLoginPin = pin;
+        })
+        .catch(() => {
+          document.getElementById('pinLoginStatus').innerText = 'PINコードが違います';
+        });
     }
 
     function initFirebase() {
@@ -1058,22 +1105,27 @@
         }
         db = firebase.firestore();
         storage = firebase.storage();
+        sharedLoginEmail = 'staff@' + (config.projectId || 'app') + '.local';
         setDbStatus('接続中...');
 
         firebase.auth().onAuthStateChanged(user => {
-          currentUser = (user && !user.isAnonymous) ? user : null;
+          currentUser = (user && !user.isAnonymous && !isSharedLoginUser(user)) ? user : null;
           renderAdminChatUI();
-        });
 
-        firebase.auth().signInAnonymously()
-          .then(() => {
-            setDbStatus('✅ 接続済み');
+          if (!user) {
+            firebaseReady = false;
+            showPinLoginOverlay();
+            setDbStatus('PINコードを入力してください');
+            return;
+          }
+
+          hidePinLoginOverlay();
+          setDbStatus('✅ 接続済み');
+          if (!firebaseReady) {
             firebaseReady = true;
             subscribeAllData();
-          })
-          .catch(e => {
-            setDbStatus('❌ 認証エラー: ' + e.message);
-          });
+          }
+        });
       } catch (e) {
         setDbStatus('❌ Configの形式が不正です: ' + e.message);
       }
@@ -3161,7 +3213,9 @@
       activeDmStaffUid = null;
       detachDmListener();
       await firebase.auth().signOut();
-      try { await firebase.auth().signInAnonymously(); } catch (e) {}
+      if (sharedLoginPin) {
+        try { await firebase.auth().signInWithEmailAndPassword(sharedLoginEmail, sharedLoginPin); } catch (e) {}
+      }
     }
 
     function handleAdminChatBack() {
