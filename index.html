@@ -4,7 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <title>店舗コミュニケーション</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0084ff">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="店舗連絡">
 
   <style>
     * { box-sizing: border-box; }
@@ -13,12 +17,13 @@
     h2 { font-size: 1rem; margin: 0 0 10px; }
     label { font-weight: bold; display: block; margin-bottom: 6px; font-size: 0.9rem; }
 
-    input[type="text"], input[type="date"], input[type="file"], input[type="password"], input[type="email"], select, textarea {
-      width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.95rem; font-family: inherit; background: white;
+    input[type="text"], input[type="date"], input[type="file"], input[type="password"], input[type="email"], input[type="search"], select, textarea {
+      width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 16px !important; font-family: inherit; background: white;
     }
     textarea { resize: vertical; }
 
-    button { padding: 12px 18px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; font-size: 0.95rem; display: inline-flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap; }
+    button { min-height: 44px; padding: 12px 18px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; font-size: 0.95rem; display: inline-flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap; transition: transform 0.1s ease; }
+    button:active { transform: scale(0.98); }
     .btn-primary { background: #007bff; color: white; width: 100%; }
     .btn-danger { background: #dc3545; color: white; }
     .btn-success { background: #28a745; color: white; width: 100%; margin-top: 8px; }
@@ -28,7 +33,12 @@
 
     .card { background: white; padding: 15px; border-radius: 10px; margin-bottom: 15px; border: 1px solid #e1e4e8; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     .status { font-size: 0.85rem; color: #666; margin: 8px 0; font-weight: 500; }
-    .empty-state { color: #888; font-size: 0.85rem; text-align: center; margin: 15px 0; }
+    .empty-state { color: #888; font-size: 0.85rem; text-align: center; margin: 15px 0; padding: 24px 16px; }
+    .empty-state-icon { font-size: 2.2rem; display: block; margin-bottom: 8px; }
+
+    /* ===== インクリメンタル検索 ===== */
+    .search-container { padding: 8px 12px; margin-bottom: 12px; background: #ffffff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .search-input { margin-bottom: 0 !important; }
 
     .add-input-group { display: flex; gap: 6px; }
     .add-input-group input { margin-bottom: 0; }
@@ -48,10 +58,18 @@
     .store-option-btn.current { background: #e7f1ff; border-color: #0d6efd; color: #0d6efd; }
 
     .home-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .grid-card { background: white; border: 1px solid #e1e4e8; border-radius: 14px; padding: 22px 10px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .grid-card { position: relative; background: white; border: 1px solid #e1e4e8; border-radius: 14px; padding: 22px 10px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     .grid-card .grid-icon { font-size: 2rem; display: block; margin-bottom: 8px; }
     .grid-card .grid-label { font-weight: bold; font-size: 0.9rem; color: #222; }
     .grid-card .grid-desc { font-size: 0.72rem; color: #888; margin-top: 3px; }
+    .home-badge {
+      position: absolute; top: 8px; right: 10px;
+      background: #ef4444; color: #ffffff; font-size: 0.68rem; font-weight: bold;
+      border-radius: 999px; padding: 2px 6px; min-width: 18px; height: 18px;
+      display: none; align-items: center; justify-content: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2); border: 2px solid #ffffff;
+    }
+    .version-display { font-size: 0.72rem; color: #999; text-align: center; padding: 14px 0 4px; }
 
     /* ===== 各機能ビューの共通ヘッダー ===== */
     .view-topbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
@@ -248,11 +266,13 @@
 
     <div class="home-grid">
       <div class="grid-card" onclick="openView('notebook')">
+        <span id="badge-notebook" class="home-badge">0</span>
         <span class="grid-icon">📝</span>
         <div class="grid-label">連絡ノート</div>
         <div class="grid-desc">日々の申し送り</div>
       </div>
       <div class="grid-card" onclick="openView('bulletin')">
+        <span id="badge-bulletin" class="home-badge">0</span>
         <span class="grid-icon">📌</span>
         <div class="grid-label">掲示板</div>
         <div class="grid-desc">お知らせ・要確認</div>
@@ -268,6 +288,7 @@
         <div class="grid-desc">リアルタイム会話</div>
       </div>
       <div class="grid-card" onclick="openView('lostfound')">
+        <span id="badge-lostfound" class="home-badge">0</span>
         <span class="grid-icon">🎒</span>
         <div class="grid-label">忘れ物</div>
         <div class="grid-desc">拾得物の管理</div>
@@ -288,6 +309,7 @@
         <div class="grid-desc">本人ログインが必要・画像/ファイル可</div>
       </div>
     </div>
+    <div id="appVersionInfo" class="version-display"></div>
   </div>
 
   <!-- ===== 連絡ノート ===== -->
@@ -317,6 +339,9 @@
       </div>
 
       <div class="manual-category-heading">📜 履歴</div>
+      <div class="search-container">
+        <input type="search" class="search-input" id="notebookSearchInput" placeholder="🔍 履歴を検索" oninput="renderNotebookList()">
+      </div>
       <div id="notebookList"></div>
     </div>
 
@@ -375,6 +400,9 @@
       <select id="bulletinFilterStore" onchange="renderBulletinList()" style="margin-bottom: 0;">
         <option value="">すべて表示</option>
       </select>
+    </div>
+    <div class="search-container">
+      <input type="search" class="search-input" id="bulletinSearchInput" placeholder="🔍 掲示板を検索" oninput="renderBulletinList()">
     </div>
     <div id="bulletinList"></div>
   </div>
@@ -438,6 +466,9 @@
         </div>
       </div>
     </details>
+    <div class="search-container">
+      <input type="search" class="search-input" id="manualSearchInput" placeholder="🔍 マニュアルを検索" oninput="renderManualList()">
+    </div>
     <div id="manualList"></div>
   </div>
 
@@ -479,33 +510,9 @@
         <datalist id="lostTitleList"></datalist>
 
         <label>色（複数選択可）</label>
-        <div class="valuable-check-group" id="lostColorTagGroup">
-          <label><input type="checkbox" value="黒">黒</label>
-          <label><input type="checkbox" value="白">白</label>
-          <label><input type="checkbox" value="グレー">グレー</label>
-          <label><input type="checkbox" value="赤">赤</label>
-          <label><input type="checkbox" value="オレンジ">オレンジ</label>
-          <label><input type="checkbox" value="黄">黄</label>
-          <label><input type="checkbox" value="緑">緑</label>
-          <label><input type="checkbox" value="青">青</label>
-          <label><input type="checkbox" value="紫">紫</label>
-          <label><input type="checkbox" value="ピンク">ピンク</label>
-          <label><input type="checkbox" value="茶">茶</label>
-          <label><input type="checkbox" value="金">金</label>
-          <label><input type="checkbox" value="銀">銀</label>
-          <label><input type="checkbox" value="その他">その他</label>
-        </div>
+        <div class="valuable-check-group" id="lostColorTagGroup"></div>
         <label>柄（複数選択可）</label>
-        <div class="valuable-check-group" id="lostPatternTagGroup">
-          <label><input type="checkbox" value="無地">無地</label>
-          <label><input type="checkbox" value="ボーダー">ボーダー</label>
-          <label><input type="checkbox" value="チェック">チェック</label>
-          <label><input type="checkbox" value="ドット">ドット</label>
-          <label><input type="checkbox" value="花柄">花柄</label>
-          <label><input type="checkbox" value="迷彩">迷彩</label>
-          <label><input type="checkbox" value="ロゴ・ブランド柄">ロゴ・ブランド柄</label>
-          <label><input type="checkbox" value="その他">その他</label>
-        </div>
+        <div class="valuable-check-group" id="lostPatternTagGroup"></div>
         <label for="lostDescInput">特徴の補足（自由入力・任意）</label>
         <textarea id="lostDescInput" rows="2" placeholder="例: 持ち手に赤いテープ"></textarea>
 
@@ -518,14 +525,7 @@
         <label for="lostTimeInput">発見時刻（15分刻み）</label>
         <select id="lostTimeInput"></select>
         <label>貴重品タグ（該当すれば選択・複数可）</label>
-        <div class="valuable-check-group" id="lostValuableTagGroup">
-          <label><input type="checkbox" value="スマホ">📱 スマホ</label>
-          <label><input type="checkbox" value="カード">💳 カード</label>
-          <label><input type="checkbox" value="財布">👛 財布</label>
-          <label><input type="checkbox" value="鍵">🔑 鍵</label>
-          <label><input type="checkbox" value="身分証">🪪 身分証</label>
-          <label><input type="checkbox" value="その他貴重品">💎 その他貴重品</label>
-        </div>
+        <div class="valuable-check-group" id="lostValuableTagGroup"></div>
         <p class="status" style="margin-top: -4px;">貴重品タグを付けると、警察署への届出（1週間以内）のリマインドが表示されます。</p>
         <label for="lostPhotoInput">写真（任意）</label>
         <input type="file" id="lostPhotoInput" accept="image/*" capture="environment">
@@ -845,6 +845,16 @@
         <input type="file" id="handoverFormFileInput" accept="image/*,application/pdf" onchange="uploadHandoverFormFile(this.files)">
         <div id="handoverFormFileStatus" class="status"></div>
         <div id="handoverFormFileLink"></div>
+
+        <p style="font-size: 0.8rem; color: #666; margin-top: 14px;">登録画面で選べる貴重品タグ・色・柄のリストです（1行に1項目）。業態に合わせて自由に編集できます。空欄で保存すると標準のリストに戻ります。</p>
+        <label for="lostValuableTagOptionsInput">貴重品タグ</label>
+        <textarea id="lostValuableTagOptionsInput" rows="3" placeholder="スマホ&#10;カード&#10;財布"></textarea>
+        <label for="lostColorTagOptionsInput">色</label>
+        <textarea id="lostColorTagOptionsInput" rows="3" placeholder="黒&#10;白&#10;赤"></textarea>
+        <label for="lostPatternTagOptionsInput">柄</label>
+        <textarea id="lostPatternTagOptionsInput" rows="3" placeholder="無地&#10;ボーダー&#10;チェック"></textarea>
+        <button class="btn-secondary" onclick="saveLostTagOptions()">💾 タグ設定を保存</button>
+        <div id="lostTagOptionsStatus" class="status"></div>
       </div>
     </details>
 
@@ -964,6 +974,49 @@
       window.scrollTo(0, 0);
       if (view === 'chat') renderChatMessages();
       if (view === 'adminchat') renderAdminChatUI();
+      if (view === 'home') updateHomeBadges();
+    }
+
+    // ===== バージョン表示 (プルリフレッシュ後に最新版か確認できるように) =====
+    const APP_VERSION = 'v1.2.0';
+    const APP_BUILD_TIME = '2026-09-13 09:40';
+    function updateVersionDisplay() {
+      const el = document.getElementById('appVersionInfo');
+      if (!el) return;
+      el.innerText = `${APP_VERSION}（最終更新: ${APP_BUILD_TIME}）`;
+    }
+
+    // ===== ホーム画面バッジ =====
+    function renderBadge(elementId, count) {
+      const badge = document.getElementById(elementId);
+      if (!badge) return;
+      if (count > 0) {
+        badge.innerText = count > 99 ? '99+' : String(count);
+        badge.style.display = 'inline-flex';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+
+    function updateHomeBadges() {
+      const myName = getMyName();
+      const todayStr = new Date().toISOString().slice(0, 10);
+
+      const visibleNotebook = visibleForActiveStore(notebookEntries);
+      const hasTodayHandover = visibleNotebook.some(e => {
+        if (e.type !== 'handover' || !e.createdAt || !e.createdAt.toDate) return false;
+        return e.createdAt.toDate().toISOString().slice(0, 10) === todayStr;
+      });
+      renderBadge('badge-notebook', hasTodayHandover ? 0 : 1);
+
+      const unsignedCount = bulletinPosts.filter(p => {
+        if (!p.requiresAck) return false;
+        return !bulletinAcks.some(a => a.postId === p.id && a.staffName === myName);
+      }).length;
+      renderBadge('badge-bulletin', unsignedCount);
+
+      const storedCount = visibleForActiveStore(lostItems).filter(i => i.status === 'stored').length;
+      renderBadge('badge-lostfound', storedCount);
     }
 
     // ===== 設定サイドパネル =====
@@ -996,6 +1049,9 @@
     }
 
     window.addEventListener('DOMContentLoaded', () => {
+      updateVersionDisplay();
+      updateHomeBadges();
+
       const savedName = localStorage.getItem('my_name');
       if (savedName) document.getElementById('myNameInput').value = savedName;
 
@@ -1053,6 +1109,12 @@
     let lostItems = [];
     let lostFoundSettings = { storeName: '', storeAddress: '', storePhone: '', occupantCode: '', defaultRights: 'yuken', handoverFormFileUrl: '', handoverFormFileName: '' };
     let lostMonthEndReminderPosted = {};
+    const DEFAULT_VALUABLE_TAG_OPTIONS = ['スマホ', 'カード', '財布', '鍵', '身分証', 'その他貴重品'];
+    const DEFAULT_COLOR_TAG_OPTIONS = ['黒', '白', 'グレー', '赤', 'オレンジ', '黄', '緑', '青', '紫', 'ピンク', '茶', '金', '銀', 'その他'];
+    const DEFAULT_PATTERN_TAG_OPTIONS = ['無地', 'ボーダー', 'チェック', 'ドット', '花柄', '迷彩', 'ロゴ・ブランド柄', 'その他'];
+    let lostValuableTagOptions = [...DEFAULT_VALUABLE_TAG_OPTIONS];
+    let lostColorTagOptions = [...DEFAULT_COLOR_TAG_OPTIONS];
+    let lostPatternTagOptions = [...DEFAULT_PATTERN_TAG_OPTIONS];
     let policeFormCandidates = [];
     let lostItemNames = [];
     let lostLocationNames = [];
@@ -1263,6 +1325,22 @@
 
         lostMonthEndReminderPosted = (data.lostMonthEndReminderPosted && typeof data.lostMonthEndReminderPosted === 'object') ? data.lostMonthEndReminderPosted : {};
 
+        const config = data.lostItemConfig || {};
+        lostValuableTagOptions = (Array.isArray(config.valuableTags) && config.valuableTags.length > 0) ? config.valuableTags : [...DEFAULT_VALUABLE_TAG_OPTIONS];
+        lostColorTagOptions = (Array.isArray(config.colorTags) && config.colorTags.length > 0) ? config.colorTags : [...DEFAULT_COLOR_TAG_OPTIONS];
+        lostPatternTagOptions = (Array.isArray(config.patternTags) && config.patternTags.length > 0) ? config.patternTags : [...DEFAULT_PATTERN_TAG_OPTIONS];
+        renderLostTagCheckboxGroups();
+        ['lostValuableTagOptionsInput', 'lostColorTagOptionsInput', 'lostPatternTagOptionsInput'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el && !el.dataset.userEdited) {
+            el.value = ({
+              lostValuableTagOptionsInput: lostValuableTagOptions,
+              lostColorTagOptionsInput: lostColorTagOptions,
+              lostPatternTagOptionsInput: lostPatternTagOptions
+            })[id].join('\n');
+          }
+        });
+
         renderAdminChatUI();
         renderLostList();
         checkAndPostLostReminders();
@@ -1271,6 +1349,7 @@
       db.collection('notebookEntries').orderBy('createdAt', 'desc').limit(200).onSnapshot(snap => {
         notebookEntries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         renderNotebookList();
+        updateHomeBadges();
       });
 
       db.collection('handoverItems').orderBy('createdAt', 'asc').onSnapshot(snap => {
@@ -1281,11 +1360,13 @@
       db.collection('bulletinPosts').orderBy('createdAt', 'desc').limit(200).onSnapshot(snap => {
         bulletinPosts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         renderBulletinList();
+        updateHomeBadges();
       });
 
       db.collection('bulletinAcks').limit(2000).onSnapshot(snap => {
         bulletinAcks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         renderBulletinList();
+        updateHomeBadges();
       });
 
       db.collection('manuals').orderBy('createdAt', 'asc').onSnapshot(snap => {
@@ -1302,6 +1383,7 @@
         lostItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         renderLostList();
         checkAndPostLostReminders();
+        updateHomeBadges();
       });
 
       db.collection('trainingSteps').orderBy('createdAt', 'asc').onSnapshot(snap => {
@@ -1637,12 +1719,22 @@
         }
       }
 
+      const searchInput = document.getElementById('notebookSearchInput');
+      const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+      const filtered = query
+        ? visible.filter(e => (e.text || '').toLowerCase().includes(query) || (e.author || '').toLowerCase().includes(query))
+        : visible;
+
       if (visible.length === 0) {
         container.innerHTML = '<div class="empty-state">連絡ノートはまだありません</div>';
         return;
       }
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="empty-state"><span class="empty-state-icon">🔍</span>「' + escapeHtml(query) + '」に一致する履歴がありません</div>';
+        return;
+      }
       container.innerHTML = '';
-      visible.forEach(e => {
+      filtered.forEach(e => {
         const card = document.createElement('div');
         card.className = 'card';
 
@@ -1892,9 +1984,18 @@
         container.innerHTML = '<div class="empty-state">掲示板の投稿はまだありません</div>';
         return;
       }
+      const searchInput = document.getElementById('bulletinSearchInput');
+      const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+      const searched = query
+        ? filtered.filter(p => (p.title || '').toLowerCase().includes(query) || (p.body || '').toLowerCase().includes(query) || (p.author || '').toLowerCase().includes(query))
+        : filtered;
+      if (searched.length === 0) {
+        container.innerHTML = '<div class="empty-state"><span class="empty-state-icon">🔍</span>「' + escapeHtml(query) + '」に一致する投稿がありません</div>';
+        return;
+      }
       container.innerHTML = '';
       const myName = getMyName();
-      const sorted = [...filtered].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+      const sorted = [...searched].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
       sorted.forEach(p => {
         const card = document.createElement('div');
         card.className = 'card';
@@ -2113,10 +2214,19 @@
         container.innerHTML = '<div class="empty-state">マニュアルはまだ登録されていません</div>';
         return;
       }
+      const searchInput = document.getElementById('manualSearchInput');
+      const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+      const searched = query
+        ? manuals.filter(m => (m.title || '').toLowerCase().includes(query) || (m.body || '').toLowerCase().includes(query) || (m.category || '').toLowerCase().includes(query))
+        : manuals;
+      if (searched.length === 0) {
+        container.innerHTML = '<div class="empty-state"><span class="empty-state-icon">🔍</span>「' + escapeHtml(query) + '」に一致するマニュアルがありません</div>';
+        return;
+      }
       container.innerHTML = '';
 
       const categories = [];
-      manuals.forEach(m => {
+      searched.forEach(m => {
         const cat = m.category || 'その他';
         if (!categories.includes(cat)) categories.push(cat);
       });
@@ -2127,7 +2237,7 @@
         heading.innerText = cat;
         container.appendChild(heading);
 
-        manuals.filter(m => (m.category || 'その他') === cat).forEach(m => {
+        searched.filter(m => (m.category || 'その他') === cat).forEach(m => {
           const details = document.createElement('details');
 
           const summary = document.createElement('summary');
@@ -2269,6 +2379,37 @@
       if (titleList) titleList.innerHTML = lostItemNames.map(n => `<option value="${escapeHtml(n)}">`).join('');
       const locationList = document.getElementById('lostLocationList');
       if (locationList) locationList.innerHTML = lostLocationNames.map(n => `<option value="${escapeHtml(n)}">`).join('');
+    }
+
+    function renderCheckboxGroup(containerId, options) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      const previouslyChecked = new Set(Array.from(container.querySelectorAll('input:checked')).map(el => el.value));
+      container.innerHTML = options.map(opt => `<label><input type="checkbox" value="${escapeHtml(opt)}"${previouslyChecked.has(opt) ? ' checked' : ''}>${escapeHtml(opt)}</label>`).join('');
+    }
+
+    function renderLostTagCheckboxGroups() {
+      renderCheckboxGroup('lostValuableTagGroup', lostValuableTagOptions);
+      renderCheckboxGroup('lostColorTagGroup', lostColorTagOptions);
+      renderCheckboxGroup('lostPatternTagGroup', lostPatternTagOptions);
+    }
+
+    function saveLostTagOptions() {
+      if (!requireDb()) return;
+      const parse = (id) => document.getElementById(id).value.split('\n').map(s => s.trim()).filter(Boolean);
+      const ids = ['lostValuableTagOptionsInput', 'lostColorTagOptionsInput', 'lostPatternTagOptionsInput'];
+      ids.forEach(id => { document.getElementById(id).dataset.userEdited = '1'; });
+      const valuableTags = parse('lostValuableTagOptionsInput');
+      const colorTags = parse('lostColorTagOptionsInput');
+      const patternTags = parse('lostPatternTagOptionsInput');
+      db.collection('appSettings').doc('general').set({
+        lostItemConfig: {
+          valuableTags: valuableTags.length > 0 ? valuableTags : DEFAULT_VALUABLE_TAG_OPTIONS,
+          colorTags: colorTags.length > 0 ? colorTags : DEFAULT_COLOR_TAG_OPTIONS,
+          patternTags: patternTags.length > 0 ? patternTags : DEFAULT_PATTERN_TAG_OPTIONS
+        }
+      }, { merge: true });
+      document.getElementById('lostTagOptionsStatus').innerText = '✅ 保存しました';
     }
 
     function populateTimeOptions() {
