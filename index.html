@@ -874,6 +874,21 @@
     </details>
 
     <details>
+      <summary>🔑 店舗共通PINコードの変更</summary>
+      <div style="margin-top: 10px;">
+        <p style="font-size: 0.8rem; color: #666;">連絡ノート・掲示板・マニュアル・チャット・忘れ物・トレーニング管理のログインに使う、店舗共通のPINコードをここから変更できます（Firebaseコンソールを開く必要はありません）。変更すると、この端末を含め全ての端末で新しいPINコードの入力が必要になります。</p>
+        <label for="pinChangeCurrentInput">現在のPINコード</label>
+        <input type="password" id="pinChangeCurrentInput" autocomplete="off">
+        <label for="pinChangeNewInput">新しいPINコード（6文字以上）</label>
+        <input type="password" id="pinChangeNewInput" autocomplete="off">
+        <label for="pinChangeConfirmInput">新しいPINコード（確認用に再入力）</label>
+        <input type="password" id="pinChangeConfirmInput" autocomplete="off">
+        <button class="btn-secondary" onclick="changeSharedPin()">🔑 PINコードを変更する</button>
+        <div id="pinChangeStatus" class="status"></div>
+      </div>
+    </details>
+
+    <details>
       <summary>🔥 Firebaseデータベース設定</summary>
       <div style="margin-top: 10px;">
         <p style="font-size: 0.8rem; color: #666;">Firebaseコンソールでプロジェクトを作成し、Firestore Database・Authenticationの「メール/パスワード」プロバイダ・Storage（写真アップロード用）を用意した上で、ウェブアプリのConfigをここに貼り付けてください。通常の機能はこの店舗共通のPINコードでログインします（🔐管理者チャットのみ別途、本人のメールアドレスでのログインが必要です）。</p>
@@ -1090,6 +1105,38 @@
         .catch(() => {
           document.getElementById('pinLoginStatus').innerText = 'PINコードが違います';
         });
+    }
+
+    async function changeSharedPin() {
+      if (!requireDb()) return;
+      const statusEl = document.getElementById('pinChangeStatus');
+      const current = document.getElementById('pinChangeCurrentInput').value;
+      const next = document.getElementById('pinChangeNewInput').value;
+      const confirmPin = document.getElementById('pinChangeConfirmInput').value;
+
+      if (!current || !next) { statusEl.innerText = '現在のPINコードと新しいPINコードを入力してください。'; return; }
+      if (next.length < 6) { statusEl.innerText = '新しいPINコードは6文字以上にしてください。'; return; }
+      if (next !== confirmPin) { statusEl.innerText = '新しいPINコードの確認が一致しません。'; return; }
+
+      const user = firebase.auth().currentUser;
+      if (!user || user.email !== sharedLoginEmail) {
+        statusEl.innerText = '現在、個人アカウント（管理者チャット）でログイン中のため変更できません。🔐管理者チャットの「ログアウト」でPINログインの状態に戻してから、もう一度お試しください。';
+        return;
+      }
+
+      statusEl.innerText = '変更中...';
+      try {
+        const cred = firebase.auth.EmailAuthProvider.credential(sharedLoginEmail, current);
+        await user.reauthenticateWithCredential(cred);
+        await user.updatePassword(next);
+        sharedLoginPin = next;
+        statusEl.innerText = '✅ PINコードを変更しました。';
+        document.getElementById('pinChangeCurrentInput').value = '';
+        document.getElementById('pinChangeNewInput').value = '';
+        document.getElementById('pinChangeConfirmInput').value = '';
+      } catch (e) {
+        statusEl.innerText = '現在のPINコードが正しくないか、変更に失敗しました: ' + e.message;
+      }
     }
 
     function initFirebase() {
@@ -1318,10 +1365,12 @@
 
     async function uploadHandoverFormFile(fileList) {
       if (!requireDb()) return;
-      const file = fileList && fileList[0];
-      if (!file) return;
+      const rawFile = fileList && fileList[0];
+      if (!rawFile) return;
       const statusEl = document.getElementById('handoverFormFileStatus');
       try {
+        statusEl.innerText = rawFile.type.startsWith('image/') ? '圧縮中...' : 'アップロード中...';
+        const file = await compressImageIfNeeded(rawFile);
         statusEl.innerText = 'アップロード中...';
         const ref = storage.ref().child('settings/handoverForm_' + Date.now() + '_' + file.name);
         const snap = await ref.put(file);
@@ -1464,6 +1513,47 @@
       reader.onload = () => { document.getElementById(textareaId).value = reader.result; };
       reader.readAsText(file);
       document.getElementById(fileInputId).value = '';
+    }
+
+    // ===== 画像の自動圧縮 (アップロード前にリサイズ・再圧縮してStorage容量と通信量を節約) =====
+    function loadImageSource(file) {
+      if (window.createImageBitmap) {
+        return createImageBitmap(file);
+      }
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+        img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+        img.src = url;
+      });
+    }
+
+    async function compressImageIfNeeded(file, { maxDimension = 1600, quality = 0.82, skipUnderBytes = 200 * 1024 } = {}) {
+      if (!file || !file.type || !file.type.startsWith('image/')) return file;
+      if (file.type === 'image/gif' || file.type === 'image/svg+xml') return file;
+      if (file.size <= skipUnderBytes) return file;
+      try {
+        const source = await loadImageSource(file);
+        const width = source.width || source.naturalWidth;
+        const height = source.height || source.naturalHeight;
+        if (!width || !height) return file;
+        const scale = Math.min(1, maxDimension / Math.max(width, height));
+        const targetW = Math.max(1, Math.round(width * scale));
+        const targetH = Math.max(1, Math.round(height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(source, 0, 0, targetW, targetH);
+        if (source.close) source.close();
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+        if (!blob || blob.size >= file.size) return file;
+        const newName = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+        return new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() });
+      } catch (e) {
+        return file;
+      }
     }
 
     function populateStoreSelect(selectEl, { multiple = false, filterMode = false } = {}) {
@@ -2092,11 +2182,13 @@
     }
 
     async function handleChatFileSelect(fileList) {
-      const file = fileList && fileList[0];
-      if (!file) return;
+      const rawFile = fileList && fileList[0];
+      if (!rawFile) return;
       if (!requireDb() || !requireActiveStore()) { document.getElementById('chatFileInput').value = ''; return; }
       const statusEl = document.getElementById('chatUploadStatus');
       const MAX_SIZE = 20 * 1024 * 1024;
+      statusEl.innerText = rawFile.type.startsWith('image/') ? '画像を圧縮中...' : '';
+      const file = await compressImageIfNeeded(rawFile);
       if (file.size > MAX_SIZE) {
         statusEl.innerText = 'ファイルサイズが大きすぎます（20MBまで）';
         document.getElementById('chatFileInput').value = '';
@@ -2247,9 +2339,11 @@
       const file = photoInput.files[0];
       if (file) {
         try {
+          statusEl.innerText = '写真を圧縮中...';
+          const compressed = await compressImageIfNeeded(file);
           statusEl.innerText = '写真をアップロード中...';
-          const ref = storage.ref().child('lostItems/' + Date.now() + '_' + file.name);
-          const snap = await ref.put(file);
+          const ref = storage.ref().child('lostItems/' + Date.now() + '_' + compressed.name);
+          const snap = await ref.put(compressed);
           data.photoUrl = await snap.ref.getDownloadURL();
         } catch (e) {
           statusEl.innerText = '写真のアップロードに失敗しました: ' + e.message;
@@ -3400,10 +3494,12 @@
     }
 
     async function handleDmFileSelect(fileList) {
-      const file = fileList && fileList[0];
-      if (!file || !currentUser || !activeDmStaffUid) return;
+      const rawFile = fileList && fileList[0];
+      if (!rawFile || !currentUser || !activeDmStaffUid) return;
       const statusEl = document.getElementById('dmUploadStatus');
       const MAX_SIZE = 20 * 1024 * 1024;
+      statusEl.innerText = rawFile.type.startsWith('image/') ? '画像を圧縮中...' : '';
+      const file = await compressImageIfNeeded(rawFile);
       if (file.size > MAX_SIZE) {
         statusEl.innerText = 'ファイルサイズが大きすぎます（20MBまで）';
         document.getElementById('dmFileInput').value = '';
