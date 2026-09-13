@@ -327,6 +327,8 @@
         <label>📋 最新の引継ぎ</label>
         <div id="latestHandoverContent" class="entry-body">まだ引継ぎがありません</div>
         <div class="entry-meta" id="latestHandoverMeta"></div>
+        <div id="latestHandoverConfirmList" class="ack-signer-list" style="margin-top: 8px;"></div>
+        <button class="btn-outline" id="latestHandoverConfirmBtn" style="width: 100%; margin-top: 8px; display: none;" onclick="confirmLatestHandover()">✅ 確認しました（次のシフト担当者はこちら）</button>
       </div>
 
       <button class="btn-primary" style="font-size: 1.05rem; padding: 16px;" onclick="startHandoverWizard()">📋 引継ぎを作成する</button>
@@ -350,10 +352,17 @@
       <div class="status" id="handoverProgressLabel"></div>
 
       <div class="card" id="handoverQuestionCard">
-        <h2 id="handoverQuestionText"></h2>
-        <div class="handover-answer-row">
+        <div class="chat-sender-label">🧑‍💼 バーチャル店長</div>
+        <div class="chat-bubble chat-bubble-other" style="margin-bottom: 12px;">
+          <h2 id="handoverQuestionText" style="margin: 0; font-size: 1rem;"></h2>
+        </div>
+        <div class="handover-answer-row" id="handoverYesNoRow">
           <button class="handover-answer-btn" id="handoverYesBtn" onclick="selectHandoverAnswer('yes')">⚠️ あり</button>
           <button class="handover-answer-btn" id="handoverNoBtn" onclick="selectHandoverAnswer('no')">✅ なし</button>
+        </div>
+        <div id="handoverCountRow" style="display: none;">
+          <label for="handoverCountInput">件数</label>
+          <input type="number" id="handoverCountInput" min="0" inputmode="numeric" placeholder="例: 3" oninput="updateHandoverCount(this.value)">
         </div>
         <div id="handoverDetailWrap" style="display: none;">
           <label for="handoverDetailInput">詳細（任意）</label>
@@ -809,13 +818,22 @@
     <details open>
       <summary>📋 引継ぎ項目（連絡ノートの一問一答）</summary>
       <div style="margin-top: 10px;">
-        <p style="font-size: 0.8rem; color: #666;">連絡ノートの「引継ぎを作成する」で、スタッフに一問一答で聞かれる質問リストです。「あり」と回答された項目だけが、下の定型文を使って引継ぎ書に自動で組み込まれます。</p>
+        <p style="font-size: 0.8rem; color: #666;">連絡ノートの「引継ぎを作成する」で、スタッフに一問一答で聞かれる質問リストです。「あり」と回答された項目（件数タイプは1件以上）だけが、下の定型文を使って引継ぎ書に自動で組み込まれます。</p>
         <div id="handoverItemList"></div>
         <hr>
         <label for="handoverQuestionInput">質問文</label>
         <input type="text" id="handoverQuestionInput" placeholder="例: レジの過不足はありましたか？">
-        <label for="handoverTemplateInput">「あり」の場合の定型文</label>
-        <input type="text" id="handoverTemplateInput" placeholder="例: レジ過不足あり">
+        <label for="handoverAnswerTypeInput">回答タイプ</label>
+        <select id="handoverAnswerTypeInput">
+          <option value="yesno">あり／なし</option>
+          <option value="count">件数（数字を入力）</option>
+        </select>
+        <label for="handoverTemplateInput">引継ぎ書に載せる定型文（件数タイプは「{n}」が入力された数字に置き換わります）</label>
+        <input type="text" id="handoverTemplateInput" placeholder="例: レジ過不足あり／店頭受取荷物: {n}件">
+        <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; font-size: 0.85rem;">
+          <input type="checkbox" id="handoverImportantInput" style="width: auto; margin: 0;">
+          重要項目にする（引継ぎ書の先頭に強調表示）
+        </label>
         <button class="btn-primary" onclick="addHandoverItem()">➕ 項目を追加</button>
         <button class="btn-secondary" style="margin-top: 8px;" onclick="seedDefaultHandoverItems()">🌱 サンプル項目を追加する</button>
       </div>
@@ -1102,6 +1120,7 @@
 
     let notebookEntries = [];
     let handoverItems = [];
+    let handoverConfirmations = [];
     let bulletinPosts = [];
     let bulletinAcks = [];
     let manuals = [];
@@ -1355,6 +1374,11 @@
       db.collection('handoverItems').orderBy('createdAt', 'asc').onSnapshot(snap => {
         handoverItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         renderHandoverItemList();
+      });
+
+      db.collection('handoverConfirmations').limit(2000).onSnapshot(snap => {
+        handoverConfirmations = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderNotebookList();
       });
 
       db.collection('bulletinPosts').orderBy('createdAt', 'desc').limit(200).onSnapshot(snap => {
@@ -1719,6 +1743,24 @@
         }
       }
 
+      const confirmList = document.getElementById('latestHandoverConfirmList');
+      const confirmBtn = document.getElementById('latestHandoverConfirmBtn');
+      if (confirmList && confirmBtn) {
+        confirmList.innerHTML = '';
+        if (latestHandover) {
+          const confirms = handoverConfirmations.filter(c => c.entryId === latestHandover.id);
+          confirms.forEach(c => {
+            const chip = document.createElement('span');
+            chip.className = 'signer-chip';
+            chip.innerText = `✅ ${c.staffName} (${formatEntryTime(c, 'confirmedAt')})`;
+            confirmList.appendChild(chip);
+          });
+          confirmBtn.style.display = confirms.some(c => c.staffName === getMyName()) ? 'none' : 'block';
+        } else {
+          confirmBtn.style.display = 'none';
+        }
+      }
+
       const searchInput = document.getElementById('notebookSearchInput');
       const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
       const filtered = query
@@ -1767,15 +1809,21 @@
       if (!requireDb()) return;
       const qInput = document.getElementById('handoverQuestionInput');
       const tInput = document.getElementById('handoverTemplateInput');
+      const typeInput = document.getElementById('handoverAnswerTypeInput');
+      const importantInput = document.getElementById('handoverImportantInput');
       const question = qInput.value.trim();
       const yesTemplate = tInput.value.trim();
       if (!question) return;
       db.collection('handoverItems').add({
         question, yesTemplate,
+        answerType: typeInput.value,
+        important: importantInput.checked,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       qInput.value = '';
       tInput.value = '';
+      typeInput.value = 'yesno';
+      importantInput.checked = false;
     }
 
     function deleteHandoverItem(id) {
@@ -1787,16 +1835,20 @@
       if (!requireDb()) return;
       if (handoverItems.length > 0 && !confirm('すでに項目が登録されています。サンプル項目を追加で挿入しますか？')) return;
       const defaults = [
-        ['レジの過不足はありましたか？', 'レジ過不足あり'],
-        ['クレーム・トラブル対応はありましたか？', 'クレーム・トラブル対応あり'],
-        ['在庫切れ・発注が必要な商品はありますか？', '在庫切れ・発注要'],
-        ['清掃・整理が必要な箇所はありますか？', '清掃・整理要'],
-        ['本部・上長への報告事項はありますか？', '本部・上長への報告事項あり'],
-        ['次のシフトに直接伝えたいことはありますか？', '次シフトへの伝達事項あり']
+        ['忘れ物はありませんか？', '忘れ物あり', 'yesno', false],
+        ['店頭受取の荷物は何件ありますか？', '店頭受取荷物: {n}件', 'count', false],
+        ['バックカウンターの片付けが未了の箇所はありますか？', 'バックカウンター片付け未了', 'yesno', false],
+        ['レジの過不足はありましたか？', 'レジ過不足あり', 'yesno', true],
+        ['クレーム・トラブル対応はありましたか？', 'クレーム・トラブル対応あり', 'yesno', true],
+        ['在庫切れ・発注が必要な商品はありますか？', '在庫切れ・発注要', 'yesno', false],
+        ['清掃・整理が必要な箇所はありますか？', '清掃・整理要', 'yesno', false],
+        ['本部・上長への報告事項はありますか？', '本部・上長への報告事項あり', 'yesno', false],
+        ['冷蔵・冷凍設備や機器の異常はありますか？', '設備異常あり', 'yesno', true],
+        ['次のシフトに直接伝えたいことはありますか？', '次シフトへの伝達事項あり', 'yesno', false]
       ];
-      for (const [question, yesTemplate] of defaults) {
+      for (const [question, yesTemplate, answerType, important] of defaults) {
         await db.collection('handoverItems').add({
-          question, yesTemplate, createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          question, yesTemplate, answerType, important, createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
       }
     }
@@ -1814,7 +1866,8 @@
         row.className = 'task-row';
         const label = document.createElement('div');
         label.className = 'task-row-label';
-        label.innerText = item.question + (item.yesTemplate ? `（${item.yesTemplate}）` : '');
+        const badges = [item.answerType === 'count' ? '🔢件数' : null, item.important ? '⚠️重要' : null].filter(Boolean).join(' ');
+        label.innerText = (badges ? `[${badges}] ` : '') + item.question + (item.yesTemplate ? `（${item.yesTemplate}）` : '');
         const delBtn = document.createElement('button');
         delBtn.className = 'btn-clear';
         delBtn.innerText = '削除';
@@ -1828,15 +1881,42 @@
     // ===== 引継ぎウィザード (一問一答 → 定型文を組み合わせて自動生成) =====
     let handoverWizardIndex = 0;
     let handoverAnswers = [];
+    let handoverWizardItems = [];
+
+    function buildHandoverCarryOverItems() {
+      const visible = visibleForActiveStore(notebookEntries);
+      const latestHandover = visible.find(e => e.type === 'handover');
+      if (!latestHandover || !Array.isArray(latestHandover.answers)) return [];
+      const carryOver = [];
+      latestHandover.answers.forEach(a => {
+        const isCount = a.answerType === 'count';
+        const wasIncluded = isCount ? (parseInt(a.count, 10) > 0) : a.answer === 'yes';
+        if (!wasIncluded) return;
+        let label = a.yesTemplate || a.question;
+        if (isCount) {
+          const n = parseInt(a.count, 10);
+          label = label.includes('{n}') ? label.replace('{n}', n) : `${label}: ${n}件`;
+        }
+        carryOver.push({
+          id: null, isCarryOver: true, answerType: 'yesno', important: false,
+          question: `🔁 前回の引継ぎ「${label}」はまだ未解決ですか？`,
+          yesTemplate: `持ち越し: ${label}`
+        });
+      });
+      return carryOver;
+    }
 
     function startHandoverWizard() {
       if (handoverItems.length === 0) {
         alert('引継ぎ項目が登録されていません。⚙️→🔒オーナー設定で項目を追加してください。');
         return;
       }
+      handoverWizardItems = [...buildHandoverCarryOverItems(), ...handoverItems];
       handoverWizardIndex = 0;
-      handoverAnswers = handoverItems.map(item => ({
-        itemId: item.id, question: item.question, yesTemplate: item.yesTemplate, answer: null, detail: ''
+      handoverAnswers = handoverWizardItems.map(item => ({
+        itemId: item.id, question: item.question, yesTemplate: item.yesTemplate,
+        answerType: item.answerType || 'yesno', important: !!item.important,
+        answer: null, count: '', detail: ''
       }));
       document.getElementById('notebookMainPanel').style.display = 'none';
       document.getElementById('handoverWizard').style.display = 'block';
@@ -1847,23 +1927,35 @@
     }
 
     function renderHandoverStep() {
-      const item = handoverItems[handoverWizardIndex];
+      const item = handoverWizardItems[handoverWizardIndex];
       const answer = handoverAnswers[handoverWizardIndex];
-      document.getElementById('handoverProgressLabel').innerText = `質問 ${handoverWizardIndex + 1} / ${handoverItems.length}`;
+      const total = handoverWizardItems.length;
+      document.getElementById('handoverProgressLabel').innerText = `質問 ${handoverWizardIndex + 1} / ${total}`;
       document.getElementById('handoverQuestionText').innerText = item.question;
 
-      const yesBtn = document.getElementById('handoverYesBtn');
-      const noBtn = document.getElementById('handoverNoBtn');
-      yesBtn.classList.toggle('selected', answer.answer === 'yes');
-      yesBtn.classList.toggle('yes-selected', answer.answer === 'yes');
-      noBtn.classList.toggle('selected', answer.answer === 'no');
-      noBtn.classList.toggle('no-selected', answer.answer === 'no');
+      const isCount = item.answerType === 'count';
+      document.getElementById('handoverYesNoRow').style.display = isCount ? 'none' : 'flex';
+      document.getElementById('handoverCountRow').style.display = isCount ? 'block' : 'none';
 
-      document.getElementById('handoverDetailWrap').style.display = answer.answer === 'yes' ? 'block' : 'none';
+      let answered;
+      if (isCount) {
+        document.getElementById('handoverCountInput').value = answer.count !== '' && answer.count != null ? answer.count : '';
+        document.getElementById('handoverDetailWrap').style.display = 'block';
+        answered = answer.count !== '' && answer.count != null;
+      } else {
+        const yesBtn = document.getElementById('handoverYesBtn');
+        const noBtn = document.getElementById('handoverNoBtn');
+        yesBtn.classList.toggle('selected', answer.answer === 'yes');
+        yesBtn.classList.toggle('yes-selected', answer.answer === 'yes');
+        noBtn.classList.toggle('selected', answer.answer === 'no');
+        noBtn.classList.toggle('no-selected', answer.answer === 'no');
+        document.getElementById('handoverDetailWrap').style.display = answer.answer === 'yes' ? 'block' : 'none';
+        answered = !!answer.answer;
+      }
       document.getElementById('handoverDetailInput').value = answer.detail || '';
 
-      document.getElementById('handoverNextBtn').disabled = !answer.answer;
-      document.getElementById('handoverNextBtn').innerText = handoverWizardIndex === handoverItems.length - 1 ? 'プレビューへ ›' : '次へ ›';
+      document.getElementById('handoverNextBtn').disabled = !answered;
+      document.getElementById('handoverNextBtn').innerText = handoverWizardIndex === total - 1 ? 'プレビューへ ›' : '次へ ›';
       document.getElementById('handoverPrevBtn').style.visibility = handoverWizardIndex === 0 ? 'hidden' : 'visible';
     }
 
@@ -1873,9 +1965,14 @@
       renderHandoverStep();
     }
 
+    function updateHandoverCount(value) {
+      handoverAnswers[handoverWizardIndex].count = value;
+      document.getElementById('handoverNextBtn').disabled = !(value !== '' && value != null);
+    }
+
     function nextHandoverStep() {
       handoverAnswers[handoverWizardIndex].detail = document.getElementById('handoverDetailInput').value.trim();
-      if (handoverWizardIndex < handoverItems.length - 1) {
+      if (handoverWizardIndex < handoverWizardItems.length - 1) {
         handoverWizardIndex++;
         renderHandoverStep();
       } else {
@@ -1891,13 +1988,26 @@
     }
 
     function composeHandoverText(answers) {
-      const yesAnswers = answers.filter(a => a.answer === 'yes');
-      if (yesAnswers.length === 0) return '本日の引継ぎ事項は特にありません。';
-      return yesAnswers.map(a => {
-        let line = '・' + (a.yesTemplate || a.question);
+      const included = [];
+      answers.forEach(a => {
+        const isCount = a.answerType === 'count';
+        let include, n;
+        if (isCount) {
+          n = parseInt(a.count, 10);
+          include = !isNaN(n) && n > 0;
+        } else {
+          include = a.answer === 'yes';
+        }
+        if (!include) return;
+        let base = a.yesTemplate || a.question;
+        if (isCount) base = base.includes('{n}') ? base.replace('{n}', n) : `${base}: ${n}件`;
+        let line = '・' + (a.important ? '【重要】' : '') + base;
         if (a.detail) line += `\n　→ ${a.detail}`;
-        return line;
-      }).join('\n');
+        included.push({ line, important: !!a.important });
+      });
+      if (included.length === 0) return '本日の引継ぎ事項は特にありません。';
+      included.sort((x, y) => (y.important ? 1 : 0) - (x.important ? 1 : 0));
+      return included.map(i => i.line).join('\n');
     }
 
     function showHandoverPreview() {
@@ -1926,6 +2036,19 @@
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       closeHandoverWizard();
+    }
+
+    function confirmLatestHandover() {
+      if (!requireDb()) return;
+      const visible = visibleForActiveStore(notebookEntries);
+      const latestHandover = visible.find(e => e.type === 'handover');
+      if (!latestHandover) return;
+      openSignaturePad('引継ぎ確認サイン', (dataUrl) => {
+        db.collection('handoverConfirmations').add({
+          entryId: latestHandover.id, staffName: getMyName(), signatureDataUrl: dataUrl,
+          confirmedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      });
     }
 
     // ===== 掲示板 (要確認 + 手書きサイン) =====
