@@ -329,6 +329,7 @@
         <div class="entry-meta" id="latestHandoverMeta"></div>
         <div id="latestHandoverConfirmList" class="ack-signer-list" style="margin-top: 8px;"></div>
         <button class="btn-outline" id="latestHandoverConfirmBtn" style="width: 100%; margin-top: 8px; display: none;" onclick="confirmLatestHandover()">✅ 確認しました（次のシフト担当者はこちら）</button>
+        <button class="btn-clear" id="latestHandoverPrintBtn" style="width: 100%; margin-top: 6px; display: none;" onclick="printLatestHandover()">🖨️ 印刷する</button>
       </div>
 
       <button class="btn-primary" style="font-size: 1.05rem; padding: 16px;" onclick="startHandoverWizard()">📋 引継ぎを作成する</button>
@@ -342,7 +343,15 @@
 
       <div class="manual-category-heading">📜 履歴</div>
       <div class="search-container">
-        <input type="search" class="search-input" id="notebookSearchInput" placeholder="🔍 履歴を検索" oninput="renderNotebookList()">
+        <input type="search" class="search-input" id="notebookSearchInput" placeholder="🔍 本文・担当者名で検索" oninput="renderNotebookList()">
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center; margin: 8px 0;">
+        <label style="display: flex; align-items: center; gap: 6px; font-weight: normal; font-size: 0.85rem; margin: 0; white-space: nowrap;">
+          <input type="checkbox" id="notebookFilterHandoverOnly" style="width: auto; margin: 0;" onchange="renderNotebookList()">
+          📋引継ぎのみ
+        </label>
+        <input type="date" id="notebookFilterDate" onchange="renderNotebookList()" style="margin: 0; flex: 1;">
+        <button class="btn-clear" style="padding: 10px 12px; white-space: nowrap;" onclick="clearNotebookFilters()">クリア</button>
       </div>
       <div id="notebookList"></div>
     </div>
@@ -380,6 +389,7 @@
         <h2>📋 引継ぎ書プレビュー（編集できます）</h2>
         <textarea id="handoverPreviewText" rows="8"></textarea>
         <button class="btn-success" onclick="submitHandover()">✅ この内容で投稿する</button>
+        <button class="btn-clear" style="width: 100%; margin-top: 8px;" onclick="printHandoverPreview()">🖨️ 印刷する</button>
       </div>
     </div>
   </div>
@@ -840,6 +850,14 @@
     </details>
 
     <details>
+      <summary>📊 店舗別 引継ぎ状況（本部確認用）</summary>
+      <div style="margin-top: 10px;">
+        <p style="font-size: 0.8rem; color: #666;">各店舗の本日の引継ぎ作成状況と、最新の引継ぎが次のシフトに確認されているかを一覧できます。</p>
+        <div id="handoverDashboardList"></div>
+      </div>
+    </details>
+
+    <details>
       <summary>🚔 忘れ物・警察届出設定</summary>
       <div style="margin-top: 10px;">
         <p style="font-size: 0.8rem; color: #666;">占有者拾得物届出書・落とし物メモの印刷に使う店舗情報です。</p>
@@ -1025,7 +1043,11 @@
         if (e.type !== 'handover' || !e.createdAt || !e.createdAt.toDate) return false;
         return e.createdAt.toDate().toISOString().slice(0, 10) === todayStr;
       });
-      renderBadge('badge-notebook', hasTodayHandover ? 0 : 1);
+      const latestHandoverForBadge = visibleNotebook.find(e => e.type === 'handover');
+      const latestUnconfirmedOld = !!latestHandoverForBadge && latestHandoverForBadge.createdAt && latestHandoverForBadge.createdAt.toDate &&
+        (Date.now() - latestHandoverForBadge.createdAt.toDate().getTime() > 2 * 60 * 60 * 1000) &&
+        !handoverConfirmations.some(c => c.entryId === latestHandoverForBadge.id);
+      renderBadge('badge-notebook', (!hasTodayHandover || latestUnconfirmedOld) ? 1 : 0);
 
       const unsignedCount = bulletinPosts.filter(p => {
         if (!p.requiresAck) return false;
@@ -1313,6 +1335,7 @@
           storesInput.value = storesList.join('\n');
         }
         renderStoreSelectOptions();
+        renderHandoverDashboard();
 
         lostFoundSettings = {
           storeName: data.lostStoreName || '',
@@ -1369,6 +1392,8 @@
         notebookEntries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         renderNotebookList();
         updateHomeBadges();
+        renderHandoverDashboard();
+        checkAndPostHandoverReminders();
       });
 
       db.collection('handoverItems').orderBy('createdAt', 'asc').onSnapshot(snap => {
@@ -1379,6 +1404,8 @@
       db.collection('handoverConfirmations').limit(2000).onSnapshot(snap => {
         handoverConfirmations = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         renderNotebookList();
+        updateHomeBadges();
+        renderHandoverDashboard();
       });
 
       db.collection('bulletinPosts').orderBy('createdAt', 'desc').limit(200).onSnapshot(snap => {
@@ -1725,6 +1752,13 @@
       db.collection('notebookEntries').doc(id).delete();
     }
 
+    function clearNotebookFilters() {
+      document.getElementById('notebookSearchInput').value = '';
+      document.getElementById('notebookFilterHandoverOnly').checked = false;
+      document.getElementById('notebookFilterDate').value = '';
+      renderNotebookList();
+    }
+
     function renderNotebookList() {
       const container = document.getElementById('notebookList');
       if (!container) return;
@@ -1760,19 +1794,30 @@
           confirmBtn.style.display = 'none';
         }
       }
+      const printBtn = document.getElementById('latestHandoverPrintBtn');
+      if (printBtn) printBtn.style.display = latestHandover ? 'block' : 'none';
 
       const searchInput = document.getElementById('notebookSearchInput');
       const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
-      const filtered = query
-        ? visible.filter(e => (e.text || '').toLowerCase().includes(query) || (e.author || '').toLowerCase().includes(query))
-        : visible;
+      const handoverOnlyInput = document.getElementById('notebookFilterHandoverOnly');
+      const dateInput = document.getElementById('notebookFilterDate');
+      let filtered = visible;
+      if (query) {
+        filtered = filtered.filter(e => (e.text || '').toLowerCase().includes(query) || (e.author || '').toLowerCase().includes(query));
+      }
+      if (handoverOnlyInput && handoverOnlyInput.checked) {
+        filtered = filtered.filter(e => e.type === 'handover');
+      }
+      if (dateInput && dateInput.value) {
+        filtered = filtered.filter(e => e.createdAt && e.createdAt.toDate && e.createdAt.toDate().toISOString().slice(0, 10) === dateInput.value);
+      }
 
       if (visible.length === 0) {
         container.innerHTML = '<div class="empty-state">連絡ノートはまだありません</div>';
         return;
       }
       if (filtered.length === 0) {
-        container.innerHTML = '<div class="empty-state"><span class="empty-state-icon">🔍</span>「' + escapeHtml(query) + '」に一致する履歴がありません</div>';
+        container.innerHTML = '<div class="empty-state"><span class="empty-state-icon">🔍</span>条件に一致する履歴がありません</div>';
         return;
       }
       container.innerHTML = '';
@@ -1874,6 +1919,38 @@
         delBtn.onclick = () => deleteHandoverItem(item.id);
         row.appendChild(label);
         row.appendChild(delBtn);
+        container.appendChild(row);
+      });
+    }
+
+    // ===== 店舗別 引継ぎ状況ダッシュボード (オーナー設定) =====
+    function renderHandoverDashboard() {
+      const container = document.getElementById('handoverDashboardList');
+      if (!container) return;
+      if (storesList.length === 0) {
+        container.innerHTML = '<div class="empty-state">店舗が登録されていません</div>';
+        return;
+      }
+      const todayStr = new Date().toISOString().slice(0, 10);
+      container.innerHTML = '';
+      storesList.forEach(store => {
+        const entries = notebookEntries.filter(e => e.type === 'handover' && (e.store || '') === store);
+        const latest = entries[0];
+        const hasToday = entries.some(e => e.createdAt && e.createdAt.toDate && e.createdAt.toDate().toISOString().slice(0, 10) === todayStr);
+        const confirmed = latest ? handoverConfirmations.some(c => c.entryId === latest.id) : false;
+
+        const row = document.createElement('div');
+        row.className = 'task-row';
+        const label = document.createElement('div');
+        label.className = 'task-row-label';
+        const statusParts = [
+          hasToday ? '✅本日作成済み' : '❌本日未作成',
+          latest ? (confirmed ? '✅確認済み' : '⚠️未確認') : ''
+        ].filter(Boolean);
+        const subParts = [statusParts.join(' ・ ')];
+        if (latest) subParts.push(formatEntryTime(latest));
+        label.innerHTML = `<strong>${escapeHtml(store)}</strong> <span class="task-row-sub">${escapeHtml(subParts.join(' ・ '))}</span>`;
+        row.appendChild(label);
         container.appendChild(row);
       });
     }
@@ -1987,7 +2064,7 @@
       renderHandoverStep();
     }
 
-    function composeHandoverText(answers) {
+    function extractIncludedHandoverAnswers(answers) {
       const included = [];
       answers.forEach(a => {
         const isCount = a.answerType === 'count';
@@ -2005,6 +2082,11 @@
         if (a.detail) line += `\n　→ ${a.detail}`;
         included.push({ line, important: !!a.important });
       });
+      return included;
+    }
+
+    function composeHandoverText(answers) {
+      const included = extractIncludedHandoverAnswers(answers);
       if (included.length === 0) return '本日の引継ぎ事項は特にありません。';
       included.sort((x, y) => (y.important ? 1 : 0) - (x.important ? 1 : 0));
       return included.map(i => i.line).join('\n');
@@ -2030,12 +2112,51 @@
     async function submitHandover() {
       if (!requireDb() || !requireActiveStore()) return;
       const composedText = document.getElementById('handoverPreviewText').value.trim();
-      await db.collection('notebookEntries').add({
+      const docRef = await db.collection('notebookEntries').add({
         type: 'handover', text: composedText, answers: handoverAnswers,
         author: getMyName(), store: activeStore,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
+      await postImportantHandoverItemsToBulletin(handoverAnswers, docRef.id);
       closeHandoverWizard();
+    }
+
+    function postImportantHandoverItemsToBulletin(answers, entryId) {
+      const importantLines = extractIncludedHandoverAnswers(answers).filter(i => i.important).map(i => i.line);
+      if (importantLines.length === 0) return Promise.resolve();
+      return db.collection('bulletinPosts').add({
+        title: '⚠️ 重要な引継ぎ事項', body: importantLines.join('\n'),
+        pinned: true, requiresAck: true, author: getMyName(),
+        storeTags: [activeStore], handoverEntryId: entryId,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+
+    // ===== 引継ぎ書の印刷 =====
+    function printHandoverDoc(text, author, timeText) {
+      const printArea = document.getElementById('printArea');
+      printArea.innerHTML = `
+        <div class="print-doc">
+          <div class="print-store-header">${escapeHtml(activeStore || '')}</div>
+          <h1>引 継 ぎ 書</h1>
+          <div class="print-field-row"><span class="pf-label">日時:</span>${escapeHtml(timeText)}</div>
+          <div class="print-field-row"><span class="pf-label">担当:</span>${escapeHtml(author)}</div>
+          <div class="print-note" style="white-space: pre-wrap; font-size: 0.95rem; margin-top: 12px;">${escapeHtml(text)}</div>
+          <div class="print-note">印刷日: ${new Date().toLocaleString('ja-JP')}</div>
+        </div>
+      `;
+      window.print();
+    }
+
+    function printHandoverPreview() {
+      printHandoverDoc(document.getElementById('handoverPreviewText').value, getMyName(), new Date().toLocaleString('ja-JP'));
+    }
+
+    function printLatestHandover() {
+      const visible = visibleForActiveStore(notebookEntries);
+      const entry = visible.find(e => e.type === 'handover');
+      if (!entry) return;
+      printHandoverDoc(entry.text || '', entry.author || '', formatEntryTime(entry));
     }
 
     function confirmLatestHandover() {
@@ -2698,7 +2819,7 @@
     }
 
     // ===== 忘れ物リマインドの自動投稿 (連絡ノート・チャットルーム) =====
-    async function postLostReminderMessage(store, text) {
+    async function postAutoReminderMessage(store, text) {
       const base = { text, store: store || '', createdAt: firebase.firestore.FieldValue.serverTimestamp() };
       await db.collection('notebookEntries').add({ ...base, type: 'note', author: '🔔 自動リマインド' });
       await db.collection('chatMessages').add({ ...base, sender: '🔔 自動リマインド' });
@@ -2720,7 +2841,7 @@
           for (const store of targets) {
             if (postedMonths[store] === monthKey) continue;
             const count = lostItems.filter(i => (i.store || '') === store && i.status === 'stored' && (i.foundDate || '').startsWith(monthKey)).length;
-            await postLostReminderMessage(store, `📅 今月分の忘れ物は${count}件です。月末のまとめ・確認をお願いします。`);
+            await postAutoReminderMessage(store, `📅 今月分の忘れ物は${count}件です。月末のまとめ・確認をお願いします。`);
             postedMonths[store] = monthKey;
             changed = true;
           }
@@ -2732,25 +2853,47 @@
         // 保管期限リマインド（3ヶ月超・アイテムごとに1回だけ）
         const overdueToPost = lostItems.filter(i => i.status === 'stored' && isOlderThanMonths(i.foundDate, 3) && !i.disposalReminderPostedAt);
         for (const item of overdueToPost) {
-          await postLostReminderMessage(item.store, `🗑️「${item.title}」は保管から3ヶ月を超えました。廃棄を検討してください。（発見日: ${item.foundDate || '不明'}）`);
+          await postAutoReminderMessage(item.store, `🗑️「${item.title}」は保管から3ヶ月を超えました。廃棄を検討してください。（発見日: ${item.foundDate || '不明'}）`);
           await db.collection('lostItems').doc(item.id).update({ disposalReminderPostedAt: firebase.firestore.FieldValue.serverTimestamp() });
         }
 
         // 貴重品の警察届出リマインド（登録時に1回、1週間超過でもう1回）
         for (const item of lostItems.filter(needsPoliceReport)) {
           if (!item.policeReminderPostedAt) {
-            await postLostReminderMessage(item.store, `🚔「${item.title}」は貴重品タグ付きです。1週間以内に警察署へ届出してください。`);
+            await postAutoReminderMessage(item.store, `🚔「${item.title}」は貴重品タグ付きです。1週間以内に警察署へ届出してください。`);
             await db.collection('lostItems').doc(item.id).update({ policeReminderPostedAt: firebase.firestore.FieldValue.serverTimestamp() });
           } else if (!item.policeOverdueReminderPostedAt) {
             const days = daysSinceFound(item.foundDate);
             if (days !== null && days > 7) {
-              await postLostReminderMessage(item.store, `🚨「${item.title}」の警察届出期限（1週間）を超過しています。至急、占有者拾得物届出書を作成してください。`);
+              await postAutoReminderMessage(item.store, `🚨「${item.title}」の警察届出期限（1週間）を超過しています。至急、占有者拾得物届出書を作成してください。`);
               await db.collection('lostItems').doc(item.id).update({ policeOverdueReminderPostedAt: firebase.firestore.FieldValue.serverTimestamp() });
             }
           }
         }
       } finally {
         checkingLostReminders = false;
+      }
+    }
+
+    // ===== 引継ぎ未確認リマインドの自動投稿 (連絡ノート・チャットルーム) =====
+    let checkingHandoverReminders = false;
+    async function checkAndPostHandoverReminders() {
+      if (!db || checkingHandoverReminders) return;
+      checkingHandoverReminders = true;
+      try {
+        const targets = storesList.length > 0 ? storesList : [''];
+        for (const store of targets) {
+          const latest = notebookEntries.find(e => e.type === 'handover' && (e.store || '') === store);
+          if (!latest || !latest.createdAt || !latest.createdAt.toDate || latest.unconfirmedReminderPostedAt) continue;
+          const ageMs = Date.now() - latest.createdAt.toDate().getTime();
+          if (ageMs < 2 * 60 * 60 * 1000) continue;
+          const confirmed = handoverConfirmations.some(c => c.entryId === latest.id);
+          if (confirmed) continue;
+          await postAutoReminderMessage(store, `⏰ ${formatEntryTime(latest)}の引継ぎが2時間以上、次のシフトに確認されていません。📝連絡ノートから確認をお願いします。`);
+          await db.collection('notebookEntries').doc(latest.id).update({ unconfirmedReminderPostedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        }
+      } finally {
+        checkingHandoverReminders = false;
       }
     }
 
