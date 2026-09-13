@@ -804,6 +804,15 @@
     </details>
 
     <button class="btn-clear" style="width: 100%; margin-top: 8px;" onclick="openOwnerDrawer()">🔒 オーナー設定を開く</button>
+    <div id="ownerLoginPrompt" style="display: none; margin-top: 10px;">
+      <p style="font-size: 0.8rem; color: #666;">オーナー設定を開くには、オーナー（管理者）としてログインしてください。ログインすると、この端末は一時的にオーナーアカウントに切り替わります。作業が終わったら🔐管理者チャットの「ログアウト」で共通PINに戻せます。</p>
+      <label for="ownerLoginEmail">メールアドレス</label>
+      <input type="text" id="ownerLoginEmail" autocomplete="username">
+      <label for="ownerLoginPassword">パスワード</label>
+      <input type="password" id="ownerLoginPassword" autocomplete="current-password">
+      <button class="btn-primary" onclick="doOwnerLogin()">ログイン</button>
+      <div class="status" id="ownerLoginStatus"></div>
+    </div>
   </div>
 
   <!-- ===== オーナー設定パネル ===== -->
@@ -1068,9 +1077,26 @@
     function closeSideDrawer() {
       document.getElementById('sideDrawer').classList.remove('open');
       document.getElementById('sideDrawerOverlay').classList.remove('open');
+      const prompt = document.getElementById('ownerLoginPrompt');
+      if (prompt) {
+        prompt.style.display = 'none';
+        document.getElementById('ownerLoginEmail').value = '';
+        document.getElementById('ownerLoginPassword').value = '';
+        document.getElementById('ownerLoginStatus').innerText = '';
+      }
     }
 
+    // ===== オーナー設定 (管理者チャットの管理者メールと共通のオーナー判定) =====
     function openOwnerDrawer() {
+      if (!isAdminUser) {
+        document.getElementById('ownerLoginPrompt').style.display = 'block';
+        document.getElementById('ownerLoginStatus').innerText = '';
+        return;
+      }
+      showOwnerDrawer();
+    }
+
+    function showOwnerDrawer() {
       document.getElementById('ownerDrawer').classList.add('open');
       document.getElementById('ownerDrawerOverlay').classList.add('open');
     }
@@ -1078,6 +1104,29 @@
     function closeOwnerDrawer() {
       document.getElementById('ownerDrawer').classList.remove('open');
       document.getElementById('ownerDrawerOverlay').classList.remove('open');
+    }
+
+    async function doOwnerLogin() {
+      const email = document.getElementById('ownerLoginEmail').value.trim();
+      const password = document.getElementById('ownerLoginPassword').value;
+      const statusEl = document.getElementById('ownerLoginStatus');
+      if (!email || !password) { statusEl.innerText = 'メールアドレスとパスワードを入力してください'; return; }
+      statusEl.innerText = 'ログイン中...';
+      try {
+        const cred = await firebase.auth().signInWithEmailAndPassword(email, password);
+        const isAdmin = adminEmailsList.includes((cred.user.email || '').toLowerCase());
+        if (!isAdmin) {
+          statusEl.innerText = 'このアカウントはオーナー（管理者）として登録されていません。';
+          return;
+        }
+        document.getElementById('ownerLoginPrompt').style.display = 'none';
+        document.getElementById('ownerLoginEmail').value = '';
+        document.getElementById('ownerLoginPassword').value = '';
+        statusEl.innerText = '';
+        showOwnerDrawer();
+      } catch (e) {
+        statusEl.innerText = 'ログインに失敗しました: ' + e.message;
+      }
     }
 
     function saveMyName() {
