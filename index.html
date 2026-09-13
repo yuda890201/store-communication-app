@@ -248,6 +248,19 @@
     </div>
   </div>
 
+  <!-- ===== 言語選択 (日本語 / English / नेपाली) ===== -->
+  <div id="langPickerOverlay" class="sig-overlay" onclick="if(event.target===this) closeLangPicker()">
+    <div class="sig-modal" style="text-align: center;">
+      <h2>🌐 Language / भाषा</h2>
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 12px;">
+        <button class="btn-outline" style="width: 100%; padding: 14px; font-size: 1rem;" onclick="setLang('ja')">🇯🇵 日本語</button>
+        <button class="btn-outline" style="width: 100%; padding: 14px; font-size: 1rem;" onclick="setLang('en')">🇬🇧 English</button>
+        <button class="btn-outline" style="width: 100%; padding: 14px; font-size: 1rem;" onclick="setLang('ne')">🇳🇵 नेपाली</button>
+      </div>
+      <button class="btn-clear" style="width: 100%; margin-top: 12px;" onclick="closeLangPicker()">✕</button>
+    </div>
+  </div>
+
   <!-- ===== プルリフレッシュ インジケーター (どのページからでも引っ張って更新できる) ===== -->
   <div id="pullRefreshIndicator">
     <span class="pr-spinner"></span>
@@ -258,45 +271,48 @@
   <!-- ===== ホーム: 機能一覧グリッド ===== -->
   <div data-view="home" class="active-view">
     <div class="home-topbar">
-      <div class="app-title">🏪 店舗コミュニケーション</div>
-      <button class="settings-btn" onclick="openSideDrawer()">⚙️</button>
+      <div class="app-title" data-i18n="home.title">🏪 店舗コミュニケーション</div>
+      <div style="display: flex; gap: 8px;">
+        <button class="settings-btn" onclick="openLangPicker()">🌐</button>
+        <button class="settings-btn" onclick="openSideDrawer()">⚙️</button>
+      </div>
     </div>
-    <button class="store-switch-btn" id="storeSwitchBtn" onclick="openStorePickerModal()">📍 店舗未設定 ▾</button>
-    <div class="home-sub" id="dbStatusHome">未接続</div>
+    <button class="store-switch-btn" id="storeSwitchBtn" onclick="openStorePickerModal()" data-i18n="home.storeNotSet">📍 店舗未設定 ▾</button>
+    <div class="home-sub" id="dbStatusHome" data-i18n="home.notConnected">未接続</div>
 
     <div class="home-grid">
       <div class="grid-card" onclick="openView('notebook')">
         <span id="badge-notebook" class="home-badge">0</span>
         <span class="grid-icon">📝</span>
-        <div class="grid-label">連絡ノート</div>
-        <div class="grid-desc">日々の申し送り</div>
+        <div class="grid-label" data-i18n="home.notebook.label">連絡ノート</div>
+        <div class="grid-desc" data-i18n="home.notebook.desc">日々の申し送り</div>
       </div>
       <div class="grid-card" onclick="openView('bulletin')">
         <span id="badge-bulletin" class="home-badge">0</span>
         <span class="grid-icon">📌</span>
-        <div class="grid-label">掲示板</div>
-        <div class="grid-desc">お知らせ・要確認</div>
+        <div class="grid-label" data-i18n="home.bulletin.label">掲示板</div>
+        <div class="grid-desc" data-i18n="home.bulletin.desc">お知らせ・要確認</div>
       </div>
       <div class="grid-card" onclick="openView('manual')">
         <span class="grid-icon">📖</span>
-        <div class="grid-label">マニュアル</div>
-        <div class="grid-desc">業務手順書</div>
+        <div class="grid-label" data-i18n="home.manual.label">マニュアル</div>
+        <div class="grid-desc" data-i18n="home.manual.desc">業務手順書</div>
       </div>
       <div class="grid-card" onclick="openView('chat')">
         <span class="grid-icon">💬</span>
-        <div class="grid-label">チャット</div>
-        <div class="grid-desc">リアルタイム会話</div>
+        <div class="grid-label" data-i18n="home.chat.label">チャット</div>
+        <div class="grid-desc" data-i18n="home.chat.desc">リアルタイム会話</div>
       </div>
       <div class="grid-card" onclick="openView('lostfound')">
         <span id="badge-lostfound" class="home-badge">0</span>
         <span class="grid-icon">🎒</span>
-        <div class="grid-label">忘れ物</div>
-        <div class="grid-desc">拾得物の管理</div>
+        <div class="grid-label" data-i18n="home.lostfound.label">忘れ物</div>
+        <div class="grid-desc" data-i18n="home.lostfound.desc">拾得物の管理</div>
       </div>
       <div class="grid-card" onclick="openView('training')">
         <span class="grid-icon">🎓</span>
         <div class="grid-label" id="trainingCardLabel">トレーニング管理</div>
-        <div class="grid-desc">進捗・サイン記録</div>
+        <div class="grid-desc" data-i18n="home.training.desc">進捗・サイン記録</div>
       </div>
       <div class="grid-card" onclick="openView('documents')">
         <span class="grid-icon">🧾</span>
@@ -316,7 +332,8 @@
   <div data-view="notebook">
     <div class="view-topbar">
       <button class="back-btn" onclick="openView('home')">‹</button>
-      <div class="view-title">📝 連絡ノート</div>
+      <div class="view-title" data-i18n="notebook.title">📝 連絡ノート</div>
+      <button class="settings-btn" onclick="openLangPicker()">🌐</button>
       <button class="settings-btn" onclick="openSideDrawer()">⚙️</button>
     </div>
     <div class="status" id="notebookStoreContext"></div>
@@ -324,34 +341,34 @@
     <!-- 通常表示: 最新の引継ぎ・作成ボタン・履歴 -->
     <div id="notebookMainPanel">
       <div class="card">
-        <label>📋 最新の引継ぎ</label>
+        <label data-i18n="notebook.latestHandover.label">📋 最新の引継ぎ</label>
         <div id="latestHandoverContent" class="entry-body">まだ引継ぎがありません</div>
         <div class="entry-meta" id="latestHandoverMeta"></div>
         <div id="latestHandoverConfirmList" class="ack-signer-list" style="margin-top: 8px;"></div>
-        <button class="btn-outline" id="latestHandoverConfirmBtn" style="width: 100%; margin-top: 8px; display: none;" onclick="confirmLatestHandover()">✅ 確認しました（次のシフト担当者はこちら）</button>
-        <button class="btn-clear" id="latestHandoverPrintBtn" style="width: 100%; margin-top: 6px; display: none;" onclick="printLatestHandover()">🖨️ 印刷する</button>
+        <button class="btn-outline" id="latestHandoverConfirmBtn" style="width: 100%; margin-top: 8px; display: none;" onclick="confirmLatestHandover()" data-i18n="notebook.confirmBtn">✅ 確認しました（次のシフト担当者はこちら）</button>
+        <button class="btn-clear" id="latestHandoverPrintBtn" style="width: 100%; margin-top: 6px; display: none;" onclick="printLatestHandover()" data-i18n="common.print">🖨️ 印刷する</button>
       </div>
 
-      <button class="btn-primary" style="font-size: 1.05rem; padding: 16px;" onclick="startHandoverWizard()">📋 引継ぎを作成する</button>
-      <button class="btn-clear" style="width: 100%; margin-top: 8px;" onclick="toggleFreeNoteForm()">＋ 自由に一言追加する</button>
+      <button class="btn-primary" style="font-size: 1.05rem; padding: 16px;" onclick="startHandoverWizard()" data-i18n="notebook.createHandoverBtn">📋 引継ぎを作成する</button>
+      <button class="btn-clear" style="width: 100%; margin-top: 8px;" onclick="toggleFreeNoteForm()" data-i18n="notebook.addFreeNoteBtn">＋ 自由に一言追加する</button>
 
       <div class="card" id="freeNoteForm" style="display: none; margin-top: 10px;">
-        <label for="notebookInput">自由記入</label>
-        <textarea id="notebookInput" rows="3" placeholder="例: 本日14時に業者が来店予定です"></textarea>
-        <button class="btn-primary" onclick="addNotebookEntry()">📝 投稿する</button>
+        <label for="notebookInput" data-i18n="notebook.freeNote.label">自由記入</label>
+        <textarea id="notebookInput" rows="3" placeholder="例: 本日14時に業者が来店予定です" data-i18n-placeholder="notebook.freeNote.placeholder"></textarea>
+        <button class="btn-primary" onclick="addNotebookEntry()" data-i18n="notebook.postBtn">📝 投稿する</button>
       </div>
 
-      <div class="manual-category-heading">📜 履歴</div>
+      <div class="manual-category-heading" data-i18n="notebook.history.heading">📜 履歴</div>
       <div class="search-container">
-        <input type="search" class="search-input" id="notebookSearchInput" placeholder="🔍 本文・担当者名で検索" oninput="renderNotebookList()">
+        <input type="search" class="search-input" id="notebookSearchInput" placeholder="🔍 本文・担当者名で検索" oninput="renderNotebookList()" data-i18n-placeholder="notebook.search.placeholder">
       </div>
       <div style="display: flex; gap: 8px; align-items: center; margin: 8px 0;">
         <label style="display: flex; align-items: center; gap: 6px; font-weight: normal; font-size: 0.85rem; margin: 0; white-space: nowrap;">
           <input type="checkbox" id="notebookFilterHandoverOnly" style="width: auto; margin: 0;" onchange="renderNotebookList()">
-          📋引継ぎのみ
+          <span data-i18n="notebook.filter.handoverOnly">📋引継ぎのみ</span>
         </label>
         <input type="date" id="notebookFilterDate" onchange="renderNotebookList()" style="margin: 0; flex: 1;">
-        <button class="btn-clear" style="padding: 10px 12px; white-space: nowrap;" onclick="clearNotebookFilters()">クリア</button>
+        <button class="btn-clear" style="padding: 10px 12px; white-space: nowrap;" onclick="clearNotebookFilters()" data-i18n="common.clear">クリア</button>
       </div>
       <div id="notebookList"></div>
     </div>
@@ -361,35 +378,35 @@
       <div class="status" id="handoverProgressLabel"></div>
 
       <div class="card" id="handoverQuestionCard">
-        <div class="chat-sender-label">🧑‍💼 バーチャル店長</div>
+        <div class="chat-sender-label" data-i18n="notebook.wizard.virtualManager">🧑‍💼 バーチャル店長</div>
         <div class="chat-bubble chat-bubble-other" style="margin-bottom: 12px;">
           <h2 id="handoverQuestionText" style="margin: 0; font-size: 1rem;"></h2>
         </div>
         <div class="handover-answer-row" id="handoverYesNoRow">
-          <button class="handover-answer-btn" id="handoverYesBtn" onclick="selectHandoverAnswer('yes')">⚠️ あり</button>
-          <button class="handover-answer-btn" id="handoverNoBtn" onclick="selectHandoverAnswer('no')">✅ なし</button>
+          <button class="handover-answer-btn" id="handoverYesBtn" onclick="selectHandoverAnswer('yes')" data-i18n="notebook.wizard.yes">⚠️ あり</button>
+          <button class="handover-answer-btn" id="handoverNoBtn" onclick="selectHandoverAnswer('no')" data-i18n="notebook.wizard.no">✅ なし</button>
         </div>
         <div id="handoverCountRow" style="display: none;">
-          <label for="handoverCountInput">件数</label>
-          <input type="number" id="handoverCountInput" min="0" inputmode="numeric" placeholder="例: 3" oninput="updateHandoverCount(this.value)">
+          <label for="handoverCountInput" data-i18n="notebook.wizard.count.label">件数</label>
+          <input type="number" id="handoverCountInput" min="0" inputmode="numeric" placeholder="例: 3" oninput="updateHandoverCount(this.value)" data-i18n-placeholder="notebook.wizard.count.placeholder">
         </div>
         <div id="handoverDetailWrap" style="display: none;">
-          <label for="handoverDetailInput">詳細（任意）</label>
-          <textarea id="handoverDetailInput" rows="2" placeholder="具体的な内容があれば入力してください"></textarea>
+          <label for="handoverDetailInput" data-i18n="notebook.wizard.detail.label">詳細（任意）</label>
+          <textarea id="handoverDetailInput" rows="2" placeholder="具体的な内容があれば入力してください" data-i18n-placeholder="notebook.wizard.detail.placeholder"></textarea>
         </div>
       </div>
 
       <div class="flow-nav">
-        <button class="btn-clear" id="handoverPrevBtn" onclick="prevHandoverStep()">‹ 戻る</button>
-        <button class="btn-primary" id="handoverNextBtn" onclick="nextHandoverStep()">次へ ›</button>
+        <button class="btn-clear" id="handoverPrevBtn" onclick="prevHandoverStep()" data-i18n="notebook.wizard.back">‹ 戻る</button>
+        <button class="btn-primary" id="handoverNextBtn" onclick="nextHandoverStep()" data-i18n="notebook.wizard.next">次へ ›</button>
       </div>
-      <button class="btn-clear" style="width: 100%; margin-top: 8px;" onclick="cancelHandoverWizard()">✕ 中止する</button>
+      <button class="btn-clear" style="width: 100%; margin-top: 8px;" onclick="cancelHandoverWizard()" data-i18n="notebook.wizard.cancel">✕ 中止する</button>
 
       <div class="card" id="handoverPreviewCard" style="display: none; margin-top: 14px;">
-        <h2>📋 引継ぎ書プレビュー（編集できます）</h2>
+        <h2 data-i18n="notebook.wizard.previewTitle">📋 引継ぎ書プレビュー（編集できます）</h2>
         <textarea id="handoverPreviewText" rows="8"></textarea>
-        <button class="btn-success" onclick="submitHandover()">✅ この内容で投稿する</button>
-        <button class="btn-clear" style="width: 100%; margin-top: 8px;" onclick="printHandoverPreview()">🖨️ 印刷する</button>
+        <button class="btn-success" onclick="submitHandover()" data-i18n="notebook.wizard.submit">✅ この内容で投稿する</button>
+        <button class="btn-clear" style="width: 100%; margin-top: 8px;" onclick="printHandoverPreview()" data-i18n="common.print">🖨️ 印刷する</button>
       </div>
     </div>
   </div>
@@ -398,30 +415,31 @@
   <div data-view="bulletin">
     <div class="view-topbar">
       <button class="back-btn" onclick="openView('home')">‹</button>
-      <div class="view-title">📌 掲示板</div>
+      <div class="view-title" data-i18n="bulletin.title">📌 掲示板</div>
+      <button class="settings-btn" onclick="openLangPicker()">🌐</button>
       <button class="settings-btn" onclick="openSideDrawer()">⚙️</button>
     </div>
     <div class="card">
-      <label for="bulletinTitleInput">タイトル</label>
-      <input type="text" id="bulletinTitleInput" placeholder="例: 冬季営業時間のお知らせ">
-      <label for="bulletinBodyInput">内容</label>
-      <textarea id="bulletinBodyInput" rows="4" placeholder="お知らせの本文を入力してください"></textarea>
+      <label for="bulletinTitleInput" data-i18n="common.titleLabel">タイトル</label>
+      <input type="text" id="bulletinTitleInput" placeholder="例: 冬季営業時間のお知らせ" data-i18n-placeholder="bulletin.titlePlaceholder">
+      <label for="bulletinBodyInput" data-i18n="common.content">内容</label>
+      <textarea id="bulletinBodyInput" rows="4" placeholder="お知らせの本文を入力してください" data-i18n-placeholder="bulletin.bodyPlaceholder"></textarea>
       <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; font-size: 0.85rem;">
         <input type="checkbox" id="bulletinRequiresAck" style="width: auto; margin: 0;">
-        要確認にする（全員に既読サインを求める）
+        <span data-i18n="bulletin.requiresAck">要確認にする（全員に既読サインを求める）</span>
       </label>
-      <label for="bulletinStoreTags">対象店舗（複数選択可・未選択は全店共通）</label>
+      <label for="bulletinStoreTags" data-i18n="common.storeTags">対象店舗（複数選択可・未選択は全店共通）</label>
       <select id="bulletinStoreTags" multiple size="3"></select>
-      <button class="btn-primary" onclick="addBulletinPost()">📌 掲示板に投稿</button>
+      <button class="btn-primary" onclick="addBulletinPost()" data-i18n="bulletin.postBtn">📌 掲示板に投稿</button>
     </div>
     <div class="card">
-      <label for="bulletinFilterStore">店舗で絞り込み</label>
+      <label for="bulletinFilterStore" data-i18n="common.filterByStore">店舗で絞り込み</label>
       <select id="bulletinFilterStore" onchange="renderBulletinList()" style="margin-bottom: 0;">
-        <option value="">すべて表示</option>
+        <option value="" data-i18n="common.filterAll">すべて表示</option>
       </select>
     </div>
     <div class="search-container">
-      <input type="search" class="search-input" id="bulletinSearchInput" placeholder="🔍 掲示板を検索" oninput="renderBulletinList()">
+      <input type="search" class="search-input" id="bulletinSearchInput" placeholder="🔍 掲示板を検索" oninput="renderBulletinList()" data-i18n-placeholder="bulletin.search.placeholder">
     </div>
     <div id="bulletinList"></div>
   </div>
@@ -430,19 +448,20 @@
   <div data-view="manual">
     <div class="view-topbar">
       <button class="back-btn" onclick="openView('home')">‹</button>
-      <div class="view-title">📖 マニュアル</div>
+      <div class="view-title" data-i18n="manual.title">📖 マニュアル</div>
+      <button class="settings-btn" onclick="openLangPicker()">🌐</button>
       <button class="settings-btn" onclick="openSideDrawer()">⚙️</button>
     </div>
     <details>
-      <summary>➕ マニュアルを追加</summary>
+      <summary data-i18n="manual.addSummary">➕ マニュアルを追加</summary>
       <div style="margin-top: 10px;">
-        <label for="manualCategoryInput">カテゴリ</label>
-        <input type="text" id="manualCategoryInput" placeholder="例: レジ操作">
-        <label for="manualTitleInput">タイトル</label>
-        <input type="text" id="manualTitleInput" placeholder="例: 開店準備の手順">
-        <label for="manualBodyInput">内容</label>
-        <textarea id="manualBodyInput" rows="5" placeholder="手順をステップごとに入力してください"></textarea>
-        <button class="btn-primary" onclick="addManual()">📖 マニュアルを追加</button>
+        <label for="manualCategoryInput" data-i18n="manual.categoryLabel">カテゴリ</label>
+        <input type="text" id="manualCategoryInput" placeholder="例: レジ操作" data-i18n-placeholder="manual.categoryPlaceholder">
+        <label for="manualTitleInput" data-i18n="common.titleLabel">タイトル</label>
+        <input type="text" id="manualTitleInput" placeholder="例: 開店準備の手順" data-i18n-placeholder="manual.titlePlaceholder">
+        <label for="manualBodyInput" data-i18n="common.content">内容</label>
+        <textarea id="manualBodyInput" rows="5" placeholder="手順をステップごとに入力してください" data-i18n-placeholder="manual.bodyPlaceholder"></textarea>
+        <button class="btn-primary" onclick="addManual()" data-i18n="manual.addBtn">📖 マニュアルを追加</button>
       </div>
     </details>
     <details>
@@ -486,7 +505,7 @@
       </div>
     </details>
     <div class="search-container">
-      <input type="search" class="search-input" id="manualSearchInput" placeholder="🔍 マニュアルを検索" oninput="renderManualList()">
+      <input type="search" class="search-input" id="manualSearchInput" placeholder="🔍 マニュアルを検索" oninput="renderManualList()" data-i18n-placeholder="manual.search.placeholder">
     </div>
     <div id="manualList"></div>
   </div>
@@ -495,7 +514,8 @@
   <div data-view="chat">
     <div class="view-topbar">
       <button class="back-btn" onclick="openView('home')">‹</button>
-      <div class="view-title">💬 チャットルーム</div>
+      <div class="view-title" data-i18n="chat.title">💬 チャットルーム</div>
+      <button class="settings-btn" onclick="openLangPicker()">🌐</button>
       <button class="settings-btn" onclick="openSideDrawer()">⚙️</button>
     </div>
     <div class="status" id="chatStoreContext"></div>
@@ -503,11 +523,11 @@
       <div id="chatMessageList" class="chat-container"></div>
       <div id="chatUploadStatus" class="status"></div>
       <div class="add-input-group">
-        <input type="text" id="chatMessageInput" placeholder="メッセージを入力">
-        <button class="btn-primary" style="width: auto;" onclick="sendChatMessage()">送信</button>
+        <input type="text" id="chatMessageInput" placeholder="メッセージを入力" data-i18n-placeholder="chat.input.placeholder">
+        <button class="btn-primary" style="width: auto;" onclick="sendChatMessage()" data-i18n="chat.sendBtn">送信</button>
       </div>
       <label class="btn-secondary doc-capture-btn" style="width: 100%; margin-top: 8px;">
-        📎 画像・ファイルを添付
+        <span data-i18n="chat.attachBtn">📎 画像・ファイルを添付</span>
         <input type="file" id="chatFileInput" hidden onchange="handleChatFileSelect(this.files)">
       </label>
     </div>
@@ -517,43 +537,44 @@
   <div data-view="lostfound">
     <div class="view-topbar">
       <button class="back-btn" onclick="openView('home')">‹</button>
-      <div class="view-title">🎒 忘れ物管理台帳</div>
+      <div class="view-title" data-i18n="lostfound.title">🎒 忘れ物管理台帳</div>
+      <button class="settings-btn" onclick="openLangPicker()">🌐</button>
       <button class="settings-btn" onclick="openSideDrawer()">⚙️</button>
     </div>
     <div class="status" id="lostStoreContext"></div>
     <details>
-      <summary>➕ 拾得物を登録</summary>
+      <summary data-i18n="lostfound.addSummary">➕ 拾得物を登録</summary>
       <div style="margin-top: 10px;">
-        <label for="lostTitleInput">品名（リストから選択、無ければ新規入力）</label>
-        <input type="text" id="lostTitleInput" list="lostTitleList" placeholder="例: 黒い折りたたみ傘">
+        <label for="lostTitleInput" data-i18n="lostfound.itemNameLabel">品名（リストから選択、無ければ新規入力）</label>
+        <input type="text" id="lostTitleInput" list="lostTitleList" placeholder="例: 黒い折りたたみ傘" data-i18n-placeholder="lostfound.itemNamePlaceholder">
         <datalist id="lostTitleList"></datalist>
 
-        <label>色（複数選択可）</label>
+        <label data-i18n="lostfound.colorLabel">色（複数選択可）</label>
         <div class="valuable-check-group" id="lostColorTagGroup"></div>
-        <label>柄（複数選択可）</label>
+        <label data-i18n="lostfound.patternLabel">柄（複数選択可）</label>
         <div class="valuable-check-group" id="lostPatternTagGroup"></div>
-        <label for="lostDescInput">特徴の補足（自由入力・任意）</label>
-        <textarea id="lostDescInput" rows="2" placeholder="例: 持ち手に赤いテープ"></textarea>
+        <label for="lostDescInput" data-i18n="lostfound.descLabel">特徴の補足（自由入力・任意）</label>
+        <textarea id="lostDescInput" rows="2" placeholder="例: 持ち手に赤いテープ" data-i18n-placeholder="lostfound.descPlaceholder"></textarea>
 
-        <label for="lostLocationInput">発見場所（リストから選択、無ければ新規入力）</label>
-        <input type="text" id="lostLocationInput" list="lostLocationList" placeholder="例: レジ横の椅子">
+        <label for="lostLocationInput" data-i18n="lostfound.locationLabel">発見場所（リストから選択、無ければ新規入力）</label>
+        <input type="text" id="lostLocationInput" list="lostLocationList" placeholder="例: レジ横の椅子" data-i18n-placeholder="lostfound.locationPlaceholder">
         <datalist id="lostLocationList"></datalist>
 
-        <label for="lostDateInput">発見日</label>
+        <label for="lostDateInput" data-i18n="lostfound.dateLabel">発見日</label>
         <input type="date" id="lostDateInput">
-        <label for="lostTimeInput">発見時刻（15分刻み）</label>
+        <label for="lostTimeInput" data-i18n="lostfound.timeLabel">発見時刻（15分刻み）</label>
         <select id="lostTimeInput"></select>
-        <label>貴重品タグ（該当すれば選択・複数可）</label>
+        <label data-i18n="lostfound.valuableTagLabel">貴重品タグ（該当すれば選択・複数可）</label>
         <div class="valuable-check-group" id="lostValuableTagGroup"></div>
-        <p class="status" style="margin-top: -4px;">貴重品タグを付けると、警察署への届出（1週間以内）のリマインドが表示されます。</p>
-        <label for="lostPhotoInput">写真（任意）</label>
+        <p class="status" style="margin-top: -4px;" data-i18n="lostfound.valuableTagNote">貴重品タグを付けると、警察署への届出（1週間以内）のリマインドが表示されます。</p>
+        <label for="lostPhotoInput" data-i18n="lostfound.photoLabel">写真（任意）</label>
         <input type="file" id="lostPhotoInput" accept="image/*" capture="environment">
-        <button class="btn-primary" onclick="addLostItem()">🎒 登録する</button>
+        <button class="btn-primary" onclick="addLostItem()" data-i18n="lostfound.registerBtn">🎒 登録する</button>
         <div id="lostUploadStatus" class="status"></div>
       </div>
     </details>
-    <button class="btn-outline" style="width: 100%; margin-bottom: 12px;" onclick="openPoliceFormComposer()">🚔 占有者拾得物届出書を作成・印刷</button>
-    <p class="status" style="margin-top: -4px;">📅🗑️🚔 月末・保管期限・警察届出のリマインドは📝連絡ノート・💬チャットルームに自動投稿されます。</p>
+    <button class="btn-outline" style="width: 100%; margin-bottom: 12px;" onclick="openPoliceFormComposer()" data-i18n="lostfound.policeFormBtn">🚔 占有者拾得物届出書を作成・印刷</button>
+    <p class="status" style="margin-top: -4px;" data-i18n="lostfound.reminderNote">📅🗑️🚔 月末・保管期限・警察届出のリマインドは📝連絡ノート・💬チャットルームに自動投稿されます。</p>
     <div id="lostList"></div>
   </div>
 
@@ -562,17 +583,18 @@
     <div class="view-topbar">
       <button class="back-btn" onclick="openView('home')">‹</button>
       <div class="view-title" id="trainingViewTitle">🎓 トレーニング管理</div>
+      <button class="settings-btn" onclick="openLangPicker()">🌐</button>
       <button class="settings-btn" onclick="openSideDrawer()">⚙️</button>
     </div>
-    <p class="status">研修ステップを完了したら、本人が手書きサインして記録します。名前は⚙️設定の「あなたの名前」を使用します。</p>
+    <p class="status" data-i18n="training.desc">研修ステップを完了したら、本人が手書きサインして記録します。名前は⚙️設定の「あなたの名前」を使用します。</p>
     <details>
-      <summary>➕ ステップを追加</summary>
+      <summary data-i18n="training.addSummary">➕ ステップを追加</summary>
       <div style="margin-top: 10px;">
-        <label for="trainingStepInput">ステップ名</label>
-        <input type="text" id="trainingStepInput" placeholder="例: レジ操作の基本">
-        <label for="trainingStoreTags">対象店舗（複数選択可・未選択は全店共通）</label>
+        <label for="trainingStepInput" data-i18n="training.stepLabel">ステップ名</label>
+        <input type="text" id="trainingStepInput" placeholder="例: レジ操作の基本" data-i18n-placeholder="training.stepPlaceholder">
+        <label for="trainingStoreTags" data-i18n="common.storeTags">対象店舗（複数選択可・未選択は全店共通）</label>
         <select id="trainingStoreTags" multiple size="3"></select>
-        <button class="btn-primary" onclick="addTrainingStep()">➕ ステップを追加</button>
+        <button class="btn-primary" onclick="addTrainingStep()" data-i18n="training.addSummary">➕ ステップを追加</button>
       </div>
     </details>
     <details>
@@ -612,9 +634,9 @@
       </div>
     </details>
     <div class="card">
-      <label for="trainingFilterStore">店舗で絞り込み</label>
+      <label for="trainingFilterStore" data-i18n="common.filterByStore">店舗で絞り込み</label>
       <select id="trainingFilterStore" onchange="renderTrainingStepList()" style="margin-bottom: 0;">
-        <option value="">すべて表示</option>
+        <option value="" data-i18n="common.filterAll">すべて表示</option>
       </select>
     </div>
     <div id="trainingStepList"></div>
@@ -625,6 +647,7 @@
     <div class="view-topbar">
       <button class="back-btn" onclick="openView('home')">‹</button>
       <div class="view-title">🧾 店控え書類の保管</div>
+      <button class="settings-btn" onclick="openLangPicker()">🌐</button>
       <button class="settings-btn" onclick="openSideDrawer()">⚙️</button>
     </div>
     <div class="status" id="docStoreContext"></div>
@@ -668,6 +691,7 @@
     <div class="view-topbar">
       <button class="back-btn" onclick="handleAdminChatBack()">‹</button>
       <div class="view-title">🔐 管理者チャット</div>
+      <button class="settings-btn" onclick="openLangPicker()">🌐</button>
       <button class="settings-btn" onclick="openSideDrawer()">⚙️</button>
     </div>
 
@@ -1069,6 +1093,260 @@
       renderBadge('badge-lostfound', storedCount);
     }
 
+    // ===== 言語切り替え (日常使う画面のみ対象。⚙️設定・🔒オーナー設定は日本語のみ) =====
+    const LANG_STORAGE_KEY = 'app_lang';
+    let currentLang = localStorage.getItem(LANG_STORAGE_KEY) || 'ja';
+
+    const I18N = {
+      en: {
+        'home.title': '🏪 Store Communication',
+        'home.notConnected': 'Not connected',
+        'home.storeNotSet': '📍 No store selected ▾',
+        'home.notebook.label': 'Notebook',
+        'home.notebook.desc': 'Daily handover notes',
+        'home.bulletin.label': 'Bulletin',
+        'home.bulletin.desc': 'Announcements',
+        'home.manual.label': 'Manual',
+        'home.manual.desc': 'Work procedures',
+        'home.chat.label': 'Chat',
+        'home.chat.desc': 'Real-time messages',
+        'home.lostfound.label': 'Lost & Found',
+        'home.lostfound.desc': 'Manage found items',
+        'home.training.default': 'Training',
+        'home.training.desc': 'Progress & signatures',
+        'notebook.title': '📝 Notebook',
+        'notebook.latestHandover.label': '📋 Latest handover',
+        'notebook.latestHandover.none': 'No handover yet. Create one from "📋 Create handover".',
+        'notebook.confirmBtn': '✅ Confirmed (next shift, tap here)',
+        'notebook.createHandoverBtn': '📋 Create handover',
+        'notebook.addFreeNoteBtn': '＋ Add a free note',
+        'notebook.freeNote.label': 'Free note',
+        'notebook.freeNote.placeholder': 'e.g. A vendor is visiting at 2pm today',
+        'notebook.postBtn': '📝 Post',
+        'notebook.history.heading': '📜 History',
+        'notebook.search.placeholder': '🔍 Search by text or staff name',
+        'notebook.filter.handoverOnly': '📋 Handovers only',
+        'common.clear': 'Clear',
+        'notebook.wizard.virtualManager': '🧑‍💼 Virtual Manager',
+        'notebook.wizard.yes': '⚠️ Yes',
+        'notebook.wizard.no': '✅ No',
+        'notebook.wizard.count.label': 'Count',
+        'notebook.wizard.count.placeholder': 'e.g. 3',
+        'notebook.wizard.detail.label': 'Details (optional)',
+        'notebook.wizard.detail.placeholder': 'Add details if any',
+        'notebook.wizard.questionWord': 'Question',
+        'notebook.wizard.back': '‹ Back',
+        'notebook.wizard.next': 'Next ›',
+        'notebook.wizard.toPreview': 'To preview ›',
+        'notebook.wizard.cancel': '✕ Cancel',
+        'notebook.wizard.previewTitle': '📋 Handover preview (editable)',
+        'notebook.wizard.submit': '✅ Post this handover',
+        'common.print': '🖨️ Print',
+        'notebook.empty': 'No notebook entries yet',
+        'bulletin.title': '📌 Bulletin',
+        'common.titleLabel': 'Title',
+        'bulletin.titlePlaceholder': 'e.g. Winter business hours notice',
+        'common.content': 'Content',
+        'bulletin.bodyPlaceholder': 'Enter the announcement text',
+        'bulletin.requiresAck': 'Require acknowledgement (everyone must sign)',
+        'common.storeTags': 'Target stores (multiple OK; none = all stores)',
+        'bulletin.postBtn': '📌 Post to bulletin',
+        'common.filterByStore': 'Filter by store',
+        'common.filterAll': 'Show all',
+        'bulletin.search.placeholder': '🔍 Search bulletin',
+        'bulletin.empty': 'No bulletin posts yet',
+        'manual.title': '📖 Manual',
+        'manual.addSummary': '➕ Add a manual',
+        'manual.categoryLabel': 'Category',
+        'manual.categoryPlaceholder': 'e.g. Register operation',
+        'manual.titlePlaceholder': 'e.g. Opening procedure',
+        'manual.bodyPlaceholder': 'Write the steps',
+        'manual.addBtn': '📖 Add manual',
+        'manual.search.placeholder': '🔍 Search manuals',
+        'manual.empty': 'No manuals registered yet',
+        'chat.title': '💬 Chat Room',
+        'chat.input.placeholder': 'Type a message',
+        'chat.sendBtn': 'Send',
+        'chat.attachBtn': '📎 Attach image/file',
+        'chat.empty': 'No messages yet',
+        'lostfound.title': '🎒 Lost & Found Ledger',
+        'lostfound.addSummary': '➕ Register a found item',
+        'lostfound.itemNameLabel': 'Item name (choose from list or type new)',
+        'lostfound.itemNamePlaceholder': 'e.g. Black folding umbrella',
+        'lostfound.colorLabel': 'Color (multiple OK)',
+        'lostfound.patternLabel': 'Pattern (multiple OK)',
+        'lostfound.descLabel': 'Additional details (optional)',
+        'lostfound.descPlaceholder': 'e.g. Red tape on the handle',
+        'lostfound.locationLabel': 'Location found (choose from list or type new)',
+        'lostfound.locationPlaceholder': 'e.g. Chair next to register',
+        'lostfound.dateLabel': 'Date found',
+        'lostfound.timeLabel': 'Time found (15-min steps)',
+        'lostfound.valuableTagLabel': 'Valuable item tags (if applicable)',
+        'lostfound.valuableTagNote': 'Adding a valuable tag will show a reminder to report to police within 1 week.',
+        'lostfound.photoLabel': 'Photo (optional)',
+        'lostfound.registerBtn': '🎒 Register',
+        'lostfound.policeFormBtn': '🚔 Create/print police report form',
+        'lostfound.reminderNote': '📅🗑️🚔 End-of-month, storage-deadline, and police-report reminders are posted automatically to 📝Notebook and 💬Chat.',
+        'lostfound.empty': 'No found items recorded yet',
+        'lostfound.status.stored': '📦 Stored',
+        'lostfound.status.returned': '✅ Returned',
+        'lostfound.status.disposed': '🗑️ Disposed',
+        'training.default': '🎓 Training',
+        'training.desc': 'When you complete a training step, sign it yourself. Your name comes from ⚙️ Settings → "Your name".',
+        'training.addSummary': '➕ Add a step',
+        'training.stepLabel': 'Step name',
+        'training.stepPlaceholder': 'e.g. Register basics',
+        'training.empty': 'No steps registered yet'
+      },
+      ne: {
+        'home.title': '🏪 पसल सञ्चार',
+        'home.notConnected': 'जडान छैन',
+        'home.storeNotSet': '📍 पसल चयन गरिएको छैन ▾',
+        'home.notebook.label': 'नोटबुक',
+        'home.notebook.desc': 'दैनिक बुझाउने जानकारी',
+        'home.bulletin.label': 'सूचना बोर्ड',
+        'home.bulletin.desc': 'सूचना/पुष्टि आवश्यक',
+        'home.manual.label': 'म्यानुअल',
+        'home.manual.desc': 'कार्य प्रक्रिया',
+        'home.chat.label': 'च्याट',
+        'home.chat.desc': 'रियल-टाइम कुराकानी',
+        'home.lostfound.label': 'हराएको सामान',
+        'home.lostfound.desc': 'फेला परेको सामानको व्यवस्थापन',
+        'home.training.default': 'तालिम व्यवस्थापन',
+        'home.training.desc': 'प्रगति र हस्ताक्षर रेकर्ड',
+        'notebook.title': '📝 नोटबुक',
+        'notebook.latestHandover.label': '📋 पछिल्लो बुझाउने विवरण',
+        'notebook.latestHandover.none': 'अहिलेसम्म बुझाउने विवरण छैन। "📋 बुझाउने विवरण बनाउनुहोस्" बाट बनाउनुहोस्।',
+        'notebook.confirmBtn': '✅ पुष्टि गरियो (अर्को शिफ्टका लागि यहाँ थिच्नुहोस्)',
+        'notebook.createHandoverBtn': '📋 बुझाउने विवरण बनाउनुहोस्',
+        'notebook.addFreeNoteBtn': '＋ स्वतन्त्र टिप्पणी थप्नुहोस्',
+        'notebook.freeNote.label': 'स्वतन्त्र टिप्पणी',
+        'notebook.freeNote.placeholder': 'उदाहरण: आज दिउँसो २ बजे विक्रेता आउनेछन्',
+        'notebook.postBtn': '📝 पोस्ट गर्नुहोस्',
+        'notebook.history.heading': '📜 इतिहास',
+        'notebook.search.placeholder': '🔍 विवरण वा नाम खोज्नुहोस्',
+        'notebook.filter.handoverOnly': '📋 बुझाउने विवरण मात्र',
+        'common.clear': 'खाली गर्नुहोस्',
+        'notebook.wizard.virtualManager': '🧑‍💼 भर्चुअल म्यानेजर',
+        'notebook.wizard.yes': '⚠️ छ',
+        'notebook.wizard.no': '✅ छैन',
+        'notebook.wizard.count.label': 'संख्या',
+        'notebook.wizard.count.placeholder': 'उदाहरण: ३',
+        'notebook.wizard.detail.label': 'विवरण (वैकल्पिक)',
+        'notebook.wizard.detail.placeholder': 'विशेष विवरण भए लेख्नुहोस्',
+        'notebook.wizard.questionWord': 'प्रश्न',
+        'notebook.wizard.back': '‹ फिर्ता',
+        'notebook.wizard.next': 'अर्को ›',
+        'notebook.wizard.toPreview': 'पूर्वावलोकनमा जानुहोस् ›',
+        'notebook.wizard.cancel': '✕ रद्द गर्नुहोस्',
+        'notebook.wizard.previewTitle': '📋 बुझाउने विवरण पूर्वावलोकन (सम्पादन गर्न सकिन्छ)',
+        'notebook.wizard.submit': '✅ यो विवरण पोस्ट गर्नुहोस्',
+        'common.print': '🖨️ प्रिन्ट गर्नुहोस्',
+        'notebook.empty': 'अहिलेसम्म नोटबुक प्रविष्टि छैन',
+        'bulletin.title': '📌 सूचना बोर्ड',
+        'common.titleLabel': 'शीर्षक',
+        'bulletin.titlePlaceholder': 'उदाहरण: जाडो याम व्यापार समय सूचना',
+        'common.content': 'विवरण',
+        'bulletin.bodyPlaceholder': 'सूचनाको विवरण लेख्नुहोस्',
+        'bulletin.requiresAck': 'पुष्टि आवश्यक (सबैले हस्ताक्षर गर्नुपर्छ)',
+        'common.storeTags': 'लक्षित पसल (धेरै चयन गर्न सकिन्छ, नछानेमा सबै पसल)',
+        'bulletin.postBtn': '📌 सूचना बोर्डमा पोस्ट गर्नुहोस्',
+        'common.filterByStore': 'पसलअनुसार फिल्टर गर्नुहोस्',
+        'common.filterAll': 'सबै देखाउनुहोस्',
+        'bulletin.search.placeholder': '🔍 सूचना बोर्ड खोज्नुहोस्',
+        'bulletin.empty': 'अहिलेसम्म कुनै सूचना छैन',
+        'manual.title': '📖 म्यानुअल',
+        'manual.addSummary': '➕ म्यानुअल थप्नुहोस्',
+        'manual.categoryLabel': 'वर्ग',
+        'manual.categoryPlaceholder': 'उदाहरण: क्यास रजिस्टर सञ्चालन',
+        'manual.titlePlaceholder': 'उदाहरण: खोल्ने तयारी प्रक्रिया',
+        'manual.bodyPlaceholder': 'चरणहरू लेख्नुहोस्',
+        'manual.addBtn': '📖 म्यानुअल थप्नुहोस्',
+        'manual.search.placeholder': '🔍 म्यानुअल खोज्नुहोस्',
+        'manual.empty': 'अहिलेसम्म कुनै म्यानुअल दर्ता छैन',
+        'chat.title': '💬 च्याट रूम',
+        'chat.input.placeholder': 'सन्देश लेख्नुहोस्',
+        'chat.sendBtn': 'पठाउनुहोस्',
+        'chat.attachBtn': '📎 फोटो/फाइल संलग्न गर्नुहोस्',
+        'chat.empty': 'अहिलेसम्म कुनै सन्देश छैन',
+        'lostfound.title': '🎒 हराएको सामान रेकर्ड',
+        'lostfound.addSummary': '➕ फेला परेको सामान दर्ता गर्नुहोस्',
+        'lostfound.itemNameLabel': 'सामानको नाम (सूचीबाट छान्नुहोस् वा नयाँ लेख्नुहोस्)',
+        'lostfound.itemNamePlaceholder': 'उदाहरण: कालो छाता',
+        'lostfound.colorLabel': 'रङ (धेरै चयन गर्न सकिन्छ)',
+        'lostfound.patternLabel': 'ढाँचा (धेरै चयन गर्न सकिन्छ)',
+        'lostfound.descLabel': 'थप विवरण (वैकल्पिक)',
+        'lostfound.descPlaceholder': 'उदाहरण: हातमा रातो टेप',
+        'lostfound.locationLabel': 'फेला परेको ठाउँ (सूचीबाट छान्नुहोस् वा नयाँ लेख्नुहोस्)',
+        'lostfound.locationPlaceholder': 'उदाहरण: क्यास रजिस्टर छेउको कुर्सी',
+        'lostfound.dateLabel': 'फेला परेको मिति',
+        'lostfound.timeLabel': 'फेला परेको समय (१५ मिनेट अन्तराल)',
+        'lostfound.valuableTagLabel': 'मूल्यवान वस्तु ट्याग (लागू भए)',
+        'lostfound.valuableTagNote': 'मूल्यवान ट्याग थप्दा, १ हप्ता भित्र प्रहरीलाई जानकारी दिने रिमाइन्डर देखिन्छ।',
+        'lostfound.photoLabel': 'फोटो (वैकल्पिक)',
+        'lostfound.registerBtn': '🎒 दर्ता गर्नुहोस्',
+        'lostfound.policeFormBtn': '🚔 प्रहरी रिपोर्ट फारम बनाउनुहोस्/प्रिन्ट गर्नुहोस्',
+        'lostfound.reminderNote': '📅🗑️🚔 महिनाको अन्त्य, भण्डारण समय सीमा, र प्रहरी रिपोर्टका रिमाइन्डरहरू 📝नोटबुक र 💬च्याटमा स्वतः पोस्ट हुन्छन्।',
+        'lostfound.empty': 'अहिलेसम्म हराएको सामानको रेकर्ड छैन',
+        'lostfound.status.stored': '📦 भण्डारणमा',
+        'lostfound.status.returned': '✅ फिर्ता गरियो',
+        'lostfound.status.disposed': '🗑️ फ्याँकियो',
+        'training.default': '🎓 तालिम व्यवस्थापन',
+        'training.desc': 'तालिम चरण पूरा भएपछि, आफैंले हस्ताक्षर गरेर रेकर्ड गर्नुहोस्। नाम ⚙️ सेटिङ्स → "तपाईंको नाम" बाट लिइन्छ।',
+        'training.addSummary': '➕ चरण थप्नुहोस्',
+        'training.stepLabel': 'चरणको नाम',
+        'training.stepPlaceholder': 'उदाहरण: क्यास रजिस्टर आधारभूत',
+        'training.empty': 'अहिलेसम्म कुनै चरण दर्ता छैन'
+      }
+    };
+
+    function t(key) {
+      if (currentLang === 'ja') return null; // 日本語はHTMLの初期テキストをそのまま使う
+      const dict = I18N[currentLang];
+      return (dict && dict[key]) || null;
+    }
+
+    function applyTranslations() {
+      // data-i18n-ja は初回に元の日本語表示から自動でキャプチャする（HTML側に重複記載しない）
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        if (el.dataset.i18nJa === undefined) el.dataset.i18nJa = el.innerText;
+        const translated = t(el.dataset.i18n);
+        el.innerText = translated !== null ? translated : el.dataset.i18nJa;
+      });
+      document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        if (el.dataset.i18nPlaceholderJa === undefined) el.dataset.i18nPlaceholderJa = el.placeholder;
+        const translated = t(el.dataset.i18nPlaceholder);
+        el.placeholder = translated !== null ? translated : el.dataset.i18nPlaceholderJa;
+      });
+    }
+
+    function setLang(lang) {
+      currentLang = lang;
+      localStorage.setItem(LANG_STORAGE_KEY, lang);
+      applyTranslations();
+      closeLangPicker();
+      // 動的に描画される一覧・バッジにも反映
+      renderNotebookList();
+      renderBulletinList();
+      renderManualList();
+      renderChatMessages();
+      renderLostList();
+      renderTrainingStepList();
+      renderTrainingProgramName();
+      updateHomeBadges();
+      if (typeof renderHandoverStep === 'function' && document.getElementById('handoverWizard').style.display === 'block') {
+        renderHandoverStep();
+      }
+    }
+
+    function openLangPicker() {
+      document.getElementById('langPickerOverlay').classList.add('open');
+    }
+
+    function closeLangPicker() {
+      document.getElementById('langPickerOverlay').classList.remove('open');
+    }
+
     // ===== 設定サイドパネル =====
     function openSideDrawer() {
       document.getElementById('sideDrawer').classList.add('open');
@@ -1139,6 +1417,7 @@
     }
 
     window.addEventListener('DOMContentLoaded', () => {
+      applyTranslations();
       updateVersionDisplay();
       updateHomeBadges();
 
@@ -1385,11 +1664,18 @@
       return ts.toDate().toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     }
 
+    let cachedCustomTrainingName = '';
+    function renderTrainingProgramName() {
+      const name = cachedCustomTrainingName || t('home.training.default') || 'トレーニング管理';
+      document.getElementById('trainingCardLabel').innerText = name;
+      document.getElementById('trainingViewTitle').innerText = cachedCustomTrainingName ? ('🎓 ' + name) : (t('training.default') || ('🎓 ' + name));
+    }
+
     function subscribeAllData() {
       db.collection('appSettings').doc('general').onSnapshot(doc => {
-        const name = (doc.exists && doc.data().trainingProgramName) ? doc.data().trainingProgramName : 'トレーニング管理';
-        document.getElementById('trainingCardLabel').innerText = name;
-        document.getElementById('trainingViewTitle').innerText = '🎓 ' + name;
+        cachedCustomTrainingName = (doc.exists && doc.data().trainingProgramName) || '';
+        renderTrainingProgramName();
+        const name = cachedCustomTrainingName || t('home.training.default') || 'トレーニング管理';
         document.getElementById('trainingNameInput').placeholder = name;
         if (!document.getElementById('trainingNameInput').dataset.userEdited) {
           document.getElementById('trainingNameInput').value = name;
@@ -1854,7 +2140,7 @@
           latestContent.innerText = latestHandover.text;
           latestMeta.innerText = [formatEntryTime(latestHandover), showAllStores ? latestHandover.store : '', latestHandover.author].filter(Boolean).join(' ・ ');
         } else {
-          latestContent.innerText = 'まだ引継ぎがありません。「📋 引継ぎを作成する」から作成してください。';
+          latestContent.innerText = t('notebook.latestHandover.none') || 'まだ引継ぎがありません。「📋 引継ぎを作成する」から作成してください。';
           latestMeta.innerText = '';
         }
       }
@@ -1895,7 +2181,7 @@
       }
 
       if (visible.length === 0) {
-        container.innerHTML = '<div class="empty-state">連絡ノートはまだありません</div>';
+        container.innerHTML = '<div class="empty-state">' + (t('notebook.empty') || '連絡ノートはまだありません') + '</div>';
         return;
       }
       if (filtered.length === 0) {
@@ -2089,7 +2375,7 @@
       const item = handoverWizardItems[handoverWizardIndex];
       const answer = handoverAnswers[handoverWizardIndex];
       const total = handoverWizardItems.length;
-      document.getElementById('handoverProgressLabel').innerText = `質問 ${handoverWizardIndex + 1} / ${total}`;
+      document.getElementById('handoverProgressLabel').innerText = `${t('notebook.wizard.questionWord') || '質問'} ${handoverWizardIndex + 1} / ${total}`;
       document.getElementById('handoverQuestionText').innerText = item.question;
 
       const isCount = item.answerType === 'count';
@@ -2114,7 +2400,9 @@
       document.getElementById('handoverDetailInput').value = answer.detail || '';
 
       document.getElementById('handoverNextBtn').disabled = !answered;
-      document.getElementById('handoverNextBtn').innerText = handoverWizardIndex === total - 1 ? 'プレビューへ ›' : '次へ ›';
+      document.getElementById('handoverNextBtn').innerText = handoverWizardIndex === total - 1
+        ? (t('notebook.wizard.toPreview') || 'プレビューへ ›')
+        : (t('notebook.wizard.next') || '次へ ›');
       document.getElementById('handoverPrevBtn').style.visibility = handoverWizardIndex === 0 ? 'hidden' : 'visible';
     }
 
@@ -2307,7 +2595,7 @@
         ? bulletinPosts.filter(p => !p.storeTags || p.storeTags.length === 0 || p.storeTags.includes(filterVal))
         : bulletinPosts;
       if (filtered.length === 0) {
-        container.innerHTML = '<div class="empty-state">掲示板の投稿はまだありません</div>';
+        container.innerHTML = '<div class="empty-state">' + (t('bulletin.empty') || '掲示板の投稿はまだありません') + '</div>';
         return;
       }
       const searchInput = document.getElementById('bulletinSearchInput');
@@ -2537,7 +2825,7 @@
       const container = document.getElementById('manualList');
       if (!container) return;
       if (manuals.length === 0) {
-        container.innerHTML = '<div class="empty-state">マニュアルはまだ登録されていません</div>';
+        container.innerHTML = '<div class="empty-state">' + (t('manual.empty') || 'マニュアルはまだ登録されていません') + '</div>';
         return;
       }
       const searchInput = document.getElementById('manualSearchInput');
@@ -2650,7 +2938,7 @@
 
       const visible = visibleForActiveStore(chatMessages);
       if (visible.length === 0) {
-        container.innerHTML = '<div class="empty-state">まだメッセージはありません</div>';
+        container.innerHTML = '<div class="empty-state">' + (t('chat.empty') || 'まだメッセージはありません') + '</div>';
         return;
       }
 
@@ -2865,9 +3153,9 @@
     }
 
     function statusLabel(status) {
-      if (status === 'returned') return { text: '✅ 返却済み', cls: 'status-returned' };
-      if (status === 'disposed') return { text: '🗑️ 廃棄済み', cls: 'status-disposed' };
-      return { text: '📦 保管中', cls: 'status-stored' };
+      if (status === 'returned') return { text: t('lostfound.status.returned') || '✅ 返却済み', cls: 'status-returned' };
+      if (status === 'disposed') return { text: t('lostfound.status.disposed') || '🗑️ 廃棄済み', cls: 'status-disposed' };
+      return { text: t('lostfound.status.stored') || '📦 保管中', cls: 'status-stored' };
     }
 
     // ===== 忘れ物リマインド (月末まとめ・3ヶ月保管・貴重品の警察届出) =====
@@ -2985,7 +3273,7 @@
 
       const visible = visibleForActiveStore(lostItems);
       if (visible.length === 0) {
-        container.innerHTML = '<div class="empty-state">忘れ物の記録はまだありません</div>';
+        container.innerHTML = '<div class="empty-state">' + (t('lostfound.empty') || '忘れ物の記録はまだありません') + '</div>';
         return;
       }
       container.innerHTML = '';
@@ -3427,7 +3715,7 @@
         ? trainingSteps.filter(s => !s.storeTags || s.storeTags.length === 0 || s.storeTags.includes(filterVal))
         : trainingSteps;
       if (filtered.length === 0) {
-        container.innerHTML = '<div class="empty-state">ステップはまだ登録されていません</div>';
+        container.innerHTML = '<div class="empty-state">' + (t('training.empty') || 'ステップはまだ登録されていません') + '</div>';
         return;
       }
       container.innerHTML = '';
