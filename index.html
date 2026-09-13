@@ -828,6 +828,7 @@
       <summary>🏪 店舗一覧（複数店舗運用）</summary>
       <div style="margin-top: 10px;">
         <p style="font-size: 0.8rem; color: #666;">複数店舗で共有運用する場合、ここで店舗名を登録します。各スタッフはホーム画面の「📍」ボタンやアプリ起動時のモーダルで、自分がいる店舗を選びます。</p>
+        <p style="font-size: 0.8rem; color: #666;">店舗ごとに別々のPIN（<code>staff01@...</code>、<code>staff02@...</code>…とFirebase Consoleで登録した共通ログイン用アカウント）を使っている場合、そのPINでログインすると自動的にその店舗が選択されます。番号は<strong>この一覧の何行目か</strong>に対応します（1行目→staff01、2行目→staff02…）。行の順番を変えると対応も変わるのでご注意ください。</p>
         <label for="storesInput">店舗一覧（1行に1店舗）</label>
         <textarea id="storesInput" rows="3" placeholder="例: 渋谷店"></textarea>
         <button class="btn-secondary" onclick="saveStores()">💾 保存</button>
@@ -1223,16 +1224,26 @@
     let dmInboxUnsub = null;
 
     // 共通PINログイン (店舗全体のアクセス制限) 用の状態
-    let sharedLoginEmail = null;
+    // staff@<domain> (単一店舗) または staff01@<domain>, staff02@<domain>... (店舗別PIN) のどちらかを共通アカウントとして扱う
+    let sharedLoginEmailBase = null; // '<projectId>.local' 部分
+    let sharedLoginEmail = null; // 現在ログイン中の共通アカウントのメールアドレス
     let sharedLoginPin = null;
+    let pendingAutoStoreIndex = null; // 店舗別PINでログインした際、店舗一覧が読み込まれ次第自動選択するためのインデックス
 
     function setDbStatus(text) {
       document.getElementById('dbStatus').innerText = text;
       document.getElementById('dbStatusHome').innerText = text;
     }
 
+    function sharedLoginLocalPart(email) {
+      if (!email || !sharedLoginEmailBase || !email.endsWith('@' + sharedLoginEmailBase)) return null;
+      return email.slice(0, -('@' + sharedLoginEmailBase).length);
+    }
+
     function isSharedLoginUser(user) {
-      return !!(user && !user.isAnonymous && sharedLoginEmail && user.email === sharedLoginEmail);
+      if (!user || user.isAnonymous) return false;
+      const localPart = sharedLoginLocalPart(user.email);
+      return localPart === 'staff' || /^staff\d{2}$/.test(localPart || '');
     }
 
     function showPinLoginOverlay(message) {
@@ -1245,18 +1256,33 @@
       document.getElementById('pinLoginInput').value = '';
     }
 
-    function handlePinLoginSubmit(event) {
+    async function handlePinLoginSubmit(event) {
       event.preventDefault();
       const pin = document.getElementById('pinLoginInput').value.trim();
       if (!pin) return;
-      document.getElementById('pinLoginStatus').innerText = 'ログイン中...';
-      firebase.auth().signInWithEmailAndPassword(sharedLoginEmail, pin)
-        .then(() => {
+      const statusEl = document.getElementById('pinLoginStatus');
+      statusEl.innerText = 'ログイン中...';
+
+      // staff@<domain> (単一店舗) と staff01@<domain>〜staff09@<domain> (店舗別PIN) を順番に試す。
+      // 店舗別PINでログインできた場合は、店舗一覧の該当する行を自動選択する。
+      const candidates = [`staff@${sharedLoginEmailBase}`];
+      for (let i = 1; i <= 9; i++) {
+        candidates.push(`staff${String(i).padStart(2, '0')}@${sharedLoginEmailBase}`);
+      }
+
+      for (const email of candidates) {
+        try {
+          await firebase.auth().signInWithEmailAndPassword(email, pin);
+          sharedLoginEmail = email;
           sharedLoginPin = pin;
-        })
-        .catch(() => {
-          document.getElementById('pinLoginStatus').innerText = 'PINコードが違います';
-        });
+          const m = email.match(/^staff(\d{2})@/);
+          pendingAutoStoreIndex = m ? parseInt(m[1], 10) - 1 : null;
+          return;
+        } catch (e) {
+          // 次の候補を試す
+        }
+      }
+      statusEl.innerText = 'PINコードが違います';
     }
 
     async function changeSharedPin() {
@@ -1304,11 +1330,13 @@
         }
         db = firebase.firestore();
         storage = firebase.storage();
-        sharedLoginEmail = 'staff@' + (config.projectId || 'app') + '.local';
+        sharedLoginEmailBase = (config.projectId || 'app') + '.local';
         setDbStatus('接続中...');
 
         firebase.auth().onAuthStateChanged(user => {
-          currentUser = (user && !user.isAnonymous && !isSharedLoginUser(user)) ? user : null;
+          const sharedLogin = isSharedLoginUser(user);
+          if (sharedLogin) sharedLoginEmail = user.email;
+          currentUser = (user && !user.isAnonymous && !sharedLogin) ? user : null;
           renderAdminChatUI();
 
           if (!user) {
@@ -1385,6 +1413,11 @@
         }
         renderStoreSelectOptions();
         renderHandoverDashboard();
+
+        if (pendingAutoStoreIndex !== null && storesList[pendingAutoStoreIndex]) {
+          chooseStore(storesList[pendingAutoStoreIndex]);
+          pendingAutoStoreIndex = null;
+        }
 
         lostFoundSettings = {
           storeName: data.lostStoreName || '',
