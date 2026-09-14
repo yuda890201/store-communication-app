@@ -250,6 +250,17 @@
         <button type="submit" class="btn-primary">ログイン</button>
       </form>
       <div class="status" id="pinLoginStatus"></div>
+
+      <button class="btn-clear" style="width: 100%; margin-top: 12px; font-size: 0.85rem;" onclick="togglePinOwnerLogin()">🔑 オーナー（管理者）としてログイン</button>
+      <div id="pinOwnerLoginBox" style="display: none; margin-top: 10px; text-align: left;">
+        <p style="font-size: 0.8rem; color: #666;">PINコードが分からない場合でも、オーナー（管理者）のメールアドレスとパスワードでログインできます。ログイン後、⚙️設定・🔒オーナー設定を開けます。</p>
+        <label for="pinOwnerEmail">メールアドレス</label>
+        <input type="text" id="pinOwnerEmail" autocomplete="username" autocapitalize="off" autocorrect="off">
+        <label for="pinOwnerPassword">パスワード</label>
+        <input type="password" id="pinOwnerPassword" autocomplete="current-password">
+        <button class="btn-primary" onclick="doPinOwnerLogin()">ログイン</button>
+        <div class="status" id="pinOwnerLoginStatus"></div>
+      </div>
     </div>
   </div>
 
@@ -1613,6 +1624,32 @@
     function hidePinLoginOverlay() {
       document.getElementById('pinLoginOverlay').classList.remove('open');
       document.getElementById('pinLoginInput').value = '';
+      document.getElementById('pinOwnerLoginBox').style.display = 'none';
+      document.getElementById('pinOwnerEmail').value = '';
+      document.getElementById('pinOwnerPassword').value = '';
+      document.getElementById('pinOwnerLoginStatus').innerText = '';
+    }
+
+    function togglePinOwnerLogin() {
+      const box = document.getElementById('pinOwnerLoginBox');
+      box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    }
+
+    // PINが分からない場合でもオーナーが締め出されないための入口
+    async function doPinOwnerLogin() {
+      const email = document.getElementById('pinOwnerEmail').value.trim();
+      const password = document.getElementById('pinOwnerPassword').value;
+      const statusEl = document.getElementById('pinOwnerLoginStatus');
+      if (!email || !password) { statusEl.innerText = 'メールアドレスとパスワードを入力してください'; return; }
+      statusEl.innerText = 'ログイン中...';
+      try {
+        await firebase.auth().signInWithEmailAndPassword(email, password);
+        // 成功すると onAuthStateChanged 側でオーバーレイが閉じる
+      } catch (e) {
+        statusEl.innerText = e.code === 'auth/too-many-requests'
+          ? 'ログイン試行が続いたため一時的に制限されています。しばらく待ってから再度お試しください。'
+          : 'ログインに失敗しました: ' + e.message;
+      }
     }
 
     const CACHED_LOGIN_EMAIL_KEY = 'cached_shared_login_email';
