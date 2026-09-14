@@ -98,6 +98,11 @@
     .pin-badge { background: #ffc107; color: #212529; }
     .ack-badge { background: #f8d7da; color: #721c24; }
     .ack-badge.done { background: #d4edda; color: #155724; }
+
+    .trouble-status { display: inline-block; font-size: 0.72rem; font-weight: bold; padding: 3px 9px; border-radius: 10px; margin-bottom: 6px; }
+    .trouble-status-pending { background: #f8d7da; color: #721c24; }
+    .trouble-status-inprogress { background: #fff3cd; color: #856404; }
+    .trouble-status-done { background: #d4edda; color: #155724; }
     .bulletin-title { font-size: 1.02rem; font-weight: bold; margin-bottom: 4px; }
 
     .ack-signer-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
@@ -313,6 +318,12 @@
         <span class="grid-icon">🎓</span>
         <div class="grid-label" id="trainingCardLabel">トレーニング管理</div>
         <div class="grid-desc" data-i18n="home.training.desc">進捗・サイン記録</div>
+      </div>
+      <div class="grid-card" onclick="openView('troublereports')">
+        <span id="badge-troublereports" class="home-badge">0</span>
+        <span class="grid-icon">🚨</span>
+        <div class="grid-label" data-i18n="home.trouble.label">不具合報告</div>
+        <div class="grid-desc" data-i18n="home.trouble.desc">現場トラブルの報告</div>
       </div>
       <div class="grid-card" onclick="openView('documents')">
         <span class="grid-icon">🧾</span>
@@ -642,6 +653,19 @@
     <div id="trainingStepList"></div>
   </div>
 
+  <!-- ===== 不具合報告 (別Firebaseプロジェクト store-trouble-report を読み取り専用アカウントで購読・表示のみ) ===== -->
+  <div data-view="troublereports">
+    <div class="view-topbar">
+      <button class="back-btn" onclick="openView('home')">‹</button>
+      <div class="view-title" data-i18n="trouble.title">🚨 不具合報告</div>
+      <button class="settings-btn" onclick="openLangPicker()">🌐</button>
+      <button class="settings-btn" onclick="openSideDrawer()">⚙️</button>
+    </div>
+    <p class="status" data-i18n="trouble.note">不具合報告アプリからの報告を表示専用で受け取っています。ここからステータスの変更はできません（不具合報告アプリ側で対応してください）。</p>
+    <div id="troubleReportStatus" class="status"></div>
+    <div id="troubleReportList"></div>
+  </div>
+
   <!-- ===== 店控え書類の保管 (端末ローカル / IndexedDB) ===== -->
   <div data-view="documents">
     <div class="view-topbar">
@@ -954,6 +978,17 @@
     </details>
 
     <details>
+      <summary>🚨 不具合報告アプリ連携設定</summary>
+      <div style="margin-top: 10px;">
+        <p style="font-size: 0.8rem; color: #666;">別のFirebaseプロジェクトで動いている「不具合報告アプリ」からの報告を表示専用で受け取るための接続情報です。不具合報告アプリ側から共有された、Firebase Config・閲覧専用アカウントのメールアドレス・パスワードをまとめてJSON形式で貼り付けてください。Firestoreに保存され、店舗の全端末で共有されます（この接続情報を使うのは表示専用の読み取りのみで、こちらから書き込むことはありません）。</p>
+        <label for="troubleReportConfigInput">連携設定 (JSON)</label>
+        <textarea id="troubleReportConfigInput" rows="8" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","storageBucket":"...","messagingSenderId":"...","appId":"...","viewerEmail":"...","viewerPassword":"..."}' oninput="this.dataset.userEdited = 'true'"></textarea>
+        <button class="btn-secondary" onclick="saveTroubleReportConfig()">💾 保存</button>
+        <div id="troubleReportConfigStatus" class="status"></div>
+      </div>
+    </details>
+
+    <details>
       <summary>🔑 店舗共通PINコードの変更</summary>
       <div style="margin-top: 10px;">
         <p style="font-size: 0.8rem; color: #666;">連絡ノート・掲示板・マニュアル・チャット・忘れ物・トレーニング管理のログインに使う、店舗共通のPINコードをここから変更できます（Firebaseコンソールを開く必要はありません）。変更すると、この端末を含め全ての端末で新しいPINコードの入力が必要になります。</p>
@@ -1035,7 +1070,7 @@
 
   <script>
     // ===== ナビゲーション (ホームのグリッド ⇔ 各機能ビュー) =====
-    const VIEWS = ['home', 'notebook', 'bulletin', 'manual', 'chat', 'lostfound', 'training', 'documents', 'adminchat'];
+    const VIEWS = ['home', 'notebook', 'bulletin', 'manual', 'chat', 'lostfound', 'training', 'troublereports', 'documents', 'adminchat'];
 
     function openView(view) {
       VIEWS.forEach(v => {
@@ -1044,6 +1079,7 @@
       window.scrollTo(0, 0);
       if (view === 'chat') renderChatMessages();
       if (view === 'adminchat') renderAdminChatUI();
+      if (view === 'troublereports') renderTroubleReportList();
       if (view === 'home') updateHomeBadges();
     }
 
@@ -1091,6 +1127,9 @@
 
       const storedCount = visibleForActiveStore(lostItems).filter(i => i.status === 'stored').length;
       renderBadge('badge-lostfound', storedCount);
+
+      const unresolvedTroubleCount = troubleReports.filter(r => r.status !== '完了').length;
+      renderBadge('badge-troublereports', unresolvedTroubleCount);
     }
 
     // ===== 言語切り替え (日常使う画面のみ対象。⚙️設定・🔒オーナー設定は日本語のみ) =====
@@ -1196,7 +1235,24 @@
         'training.addSummary': '➕ Add a step',
         'training.stepLabel': 'Step name',
         'training.stepPlaceholder': 'e.g. Register basics',
-        'training.empty': 'No steps registered yet'
+        'training.empty': 'No steps registered yet',
+        'home.trouble.label': 'Trouble Reports',
+        'home.trouble.desc': 'On-site issue reports',
+        'trouble.title': '🚨 Trouble Reports',
+        'trouble.note': 'Showing reports from the trouble-report app (read-only). Status changes must be made in that app.',
+        'trouble.notConfigured': 'Not set up yet. Ask the owner to set it up under ⚙️ → 🔒 Owner Settings → "Trouble Report App Integration".',
+        'trouble.empty': 'No trouble reports yet',
+        'trouble.viewPhoto': '📷 View photo',
+        'trouble.photoNotFound': 'Photo not found',
+        'trouble.photoLoadError': 'Failed to load photo',
+        'trouble.loadError': 'Failed to load: ',
+        'trouble.connectError': 'Failed to connect: ',
+        'trouble.unknownStore': 'Unknown store',
+        'trouble.unmatchedStore': 'not in store list',
+        'trouble.status.pending': 'Pending',
+        'trouble.status.inprogress': 'In progress',
+        'trouble.status.done': 'Done',
+        'common.loading': 'Loading...'
       },
       ne: {
         'home.title': '🏪 पसल सञ्चार',
@@ -1296,7 +1352,24 @@
         'training.addSummary': '➕ चरण थप्नुहोस्',
         'training.stepLabel': 'चरणको नाम',
         'training.stepPlaceholder': 'उदाहरण: क्यास रजिस्टर आधारभूत',
-        'training.empty': 'अहिलेसम्म कुनै चरण दर्ता छैन'
+        'training.empty': 'अहिलेसम्म कुनै चरण दर्ता छैन',
+        'home.trouble.label': 'समस्या रिपोर्ट',
+        'home.trouble.desc': 'कार्यस्थलको समस्या रिपोर्ट',
+        'trouble.title': '🚨 समस्या रिपोर्ट',
+        'trouble.note': 'समस्या रिपोर्ट एपबाट आएका रिपोर्टहरू यहाँ हेर्न मात्र सकिन्छ। स्थिति परिवर्तन गर्न त्यो एपमा गर्नुहोस्।',
+        'trouble.notConfigured': 'अझै सेटअप गरिएको छैन। मालिकलाई ⚙️ → 🔒 मालिक सेटिङ्स → "समस्या रिपोर्ट एप जडान" मा सेटअप गर्न भन्नुहोस्।',
+        'trouble.empty': 'अहिलेसम्म कुनै समस्या रिपोर्ट छैन',
+        'trouble.viewPhoto': '📷 फोटो हेर्नुहोस्',
+        'trouble.photoNotFound': 'फोटो फेला परेन',
+        'trouble.photoLoadError': 'फोटो लोड गर्न असफल भयो',
+        'trouble.loadError': 'लोड गर्न असफल भयो: ',
+        'trouble.connectError': 'जडान गर्न असफल भयो: ',
+        'trouble.unknownStore': 'अज्ञात पसल',
+        'trouble.unmatchedStore': 'पसल सूचीमा छैन',
+        'trouble.status.pending': 'सम्बोधन नगरिएको',
+        'trouble.status.inprogress': 'सम्बोधन गर्दै',
+        'trouble.status.done': 'पूरा भयो',
+        'common.loading': 'लोड हुँदैछ...'
       }
     };
 
@@ -1333,6 +1406,7 @@
       renderLostList();
       renderTrainingStepList();
       renderTrainingProgramName();
+      renderTroubleReportList();
       updateHomeBadges();
       if (typeof renderHandoverStep === 'function' && document.getElementById('handoverWizard').style.display === 'block') {
         renderHandoverStep();
@@ -1490,6 +1564,11 @@
     let lostLocationNames = [];
     let trainingSteps = [];
     let trainingCompletions = [];
+
+    // 不具合報告アプリ (別Firebaseプロジェクト store-trouble-report) を読み取り専用で購読
+    let troubleReports = [];
+    let troubleReportsDb = null;
+    let troubleReportsInitStarted = false;
 
     // 管理者チャット (本人認証) 用の状態
     let currentUser = null;
@@ -1677,6 +1756,15 @@
         renderTrainingProgramName();
         const name = cachedCustomTrainingName || t('home.training.default') || 'トレーニング管理';
         document.getElementById('trainingNameInput').placeholder = name;
+
+        const troubleReportConfig = doc.exists && doc.data().troubleReportConfig;
+        const troubleReportConfigInput = document.getElementById('troubleReportConfigInput');
+        if (troubleReportConfig) {
+          initTroubleReports(troubleReportConfig);
+          if (troubleReportConfigInput && !troubleReportConfigInput.dataset.userEdited) {
+            troubleReportConfigInput.value = JSON.stringify(troubleReportConfig, null, 2);
+          }
+        }
         if (!document.getElementById('trainingNameInput').dataset.userEdited) {
           document.getElementById('trainingNameInput').value = name;
         }
@@ -4004,6 +4092,154 @@
       a.remove();
       URL.revokeObjectURL(url);
       statusEl.innerText = `✅ ${filtered.length}件をダウンロードしました`;
+    }
+
+    // ===== 不具合報告 (別Firebaseプロジェクト store-trouble-report を読み取り専用アカウントで購読) =====
+    // 接続情報（Firebase Config・閲覧専用アカウント）はコードに埋め込まず、
+    // 🔒オーナー設定からappSettings/general.troubleReportConfigに保存したものを使う。
+    function initTroubleReports(config) {
+      if (troubleReportsInitStarted) return;
+      if (!config || !config.apiKey || !config.viewerEmail || !config.viewerPassword) return;
+      troubleReportsInitStarted = true;
+      const statusEl = document.getElementById('troubleReportStatus');
+      try {
+        const app = firebase.apps.find(a => a.name === 'troubleReportApp') ||
+          firebase.initializeApp(config, 'troubleReportApp');
+        troubleReportsDb = app.firestore();
+        app.auth().signInWithEmailAndPassword(config.viewerEmail, config.viewerPassword)
+          .then(() => {
+            troubleReportsDb.collection('trouble_reports').orderBy('created_at', 'desc').limit(50)
+              .onSnapshot(snap => {
+                troubleReports = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                if (statusEl) statusEl.innerText = '';
+                renderTroubleReportList();
+                updateHomeBadges();
+              }, err => {
+                if (statusEl) statusEl.innerText = (t('trouble.loadError') || '読み込みに失敗しました: ') + err.message;
+              });
+          })
+          .catch(err => {
+            if (statusEl) statusEl.innerText = (t('trouble.connectError') || '接続に失敗しました: ') + err.message;
+          });
+      } catch (e) {
+        if (statusEl) statusEl.innerText = (t('trouble.connectError') || '接続に失敗しました: ') + e.message;
+      }
+    }
+
+    function saveTroubleReportConfig() {
+      if (!requireDb()) return;
+      const input = document.getElementById('troubleReportConfigInput');
+      const statusEl = document.getElementById('troubleReportConfigStatus');
+      const val = input.value.trim();
+      if (!val) return;
+      let parsed;
+      try {
+        parsed = JSON.parse(val);
+      } catch (e) {
+        statusEl.innerText = 'JSON形式が不正です: ' + e.message;
+        return;
+      }
+      db.collection('appSettings').doc('general').set({ troubleReportConfig: parsed }, { merge: true });
+      statusEl.innerText = '✅ 保存しました';
+    }
+
+    function troubleStatusClass(status) {
+      if (status === '対応中') return 'trouble-status-inprogress';
+      if (status === '完了') return 'trouble-status-done';
+      return 'trouble-status-pending';
+    }
+
+    function troubleStatusDisplayLabel(status) {
+      if (status === '対応中') return t('trouble.status.inprogress') || '対応中';
+      if (status === '完了') return t('trouble.status.done') || '完了';
+      return t('trouble.status.pending') || '未対応';
+    }
+
+    function matchedStoreLabel(storeName) {
+      const trimmed = (storeName || '').trim();
+      if (!trimmed) return t('trouble.unknownStore') || '店舗不明';
+      if (storesList.includes(trimmed)) return trimmed;
+      return trimmed + '（' + (t('trouble.unmatchedStore') || '店舗一覧に一致なし') + '）';
+    }
+
+    async function loadTroubleReportPhoto(report, imgId, btnEl) {
+      const imgEl = document.getElementById(imgId);
+      if (!imgEl) return;
+      if (report.photo_data) {
+        imgEl.src = report.photo_data;
+        imgEl.style.display = 'block';
+        if (btnEl) btnEl.style.display = 'none';
+        return;
+      }
+      if (!report.has_photo || !troubleReportsDb) return;
+      if (btnEl) btnEl.innerText = t('common.loading') || '読み込み中...';
+      try {
+        const snap = await troubleReportsDb.collection('trouble_report_photos').doc(report.id).get();
+        if (snap.exists && snap.data().photo_data) {
+          imgEl.src = snap.data().photo_data;
+          imgEl.style.display = 'block';
+          if (btnEl) btnEl.style.display = 'none';
+        } else if (btnEl) {
+          btnEl.innerText = t('trouble.photoNotFound') || '写真が見つかりませんでした';
+        }
+      } catch (e) {
+        if (btnEl) btnEl.innerText = t('trouble.photoLoadError') || '写真の読み込みに失敗しました';
+      }
+    }
+
+    function renderTroubleReportList() {
+      const container = document.getElementById('troubleReportList');
+      if (!container) return;
+      if (!troubleReportsInitStarted) {
+        container.innerHTML = '<div class="empty-state">' + (t('trouble.notConfigured') || '未設定です。⚙️→🔒オーナー設定の「🚨 不具合報告アプリ連携設定」でオーナーが設定してください。') + '</div>';
+        return;
+      }
+      if (troubleReports.length === 0) {
+        container.innerHTML = '<div class="empty-state">' + (t('trouble.empty') || 'まだ不具合報告はありません') + '</div>';
+        return;
+      }
+      container.innerHTML = '';
+      troubleReports.forEach(r => {
+        const card = document.createElement('div');
+        card.className = 'card';
+
+        const statusBadge = document.createElement('span');
+        statusBadge.className = 'trouble-status ' + troubleStatusClass(r.status);
+        statusBadge.innerText = troubleStatusDisplayLabel(r.status);
+        card.appendChild(statusBadge);
+
+        const title = document.createElement('div');
+        title.className = 'bulletin-title';
+        title.innerText = [r.category, r.quick_trouble_preset].filter(Boolean).join(' / ');
+        card.appendChild(title);
+
+        const meta = document.createElement('div');
+        meta.className = 'entry-meta';
+        meta.innerText = [r.report_time, matchedStoreLabel(r.store_name), r.reporter].filter(Boolean).join(' ・ ');
+        card.appendChild(meta);
+
+        const body = document.createElement('div');
+        body.className = 'entry-body';
+        body.innerText = r.comment || '';
+        card.appendChild(body);
+
+        if (r.photo_data || r.has_photo) {
+          const imgId = 'troublePhoto-' + r.id;
+          const img = document.createElement('img');
+          img.id = imgId;
+          img.style.cssText = 'max-width: 100%; border-radius: 8px; margin-top: 8px; display: none;';
+          card.appendChild(img);
+
+          const photoBtn = document.createElement('button');
+          photoBtn.className = 'btn-clear';
+          photoBtn.style.cssText = 'width: 100%; margin-top: 6px;';
+          photoBtn.innerText = t('trouble.viewPhoto') || '📷 写真を見る';
+          photoBtn.onclick = () => loadTroubleReportPhoto(r, imgId, photoBtn);
+          card.appendChild(photoBtn);
+        }
+
+        container.appendChild(card);
+      });
     }
 
     // ===== 管理者チャット (本人認証が必要な1:1 DM。画像・ファイル共有対応) =====
