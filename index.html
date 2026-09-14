@@ -1256,6 +1256,8 @@
       document.getElementById('pinLoginInput').value = '';
     }
 
+    const CACHED_LOGIN_EMAIL_KEY = 'cached_shared_login_email';
+
     async function handlePinLoginSubmit(event) {
       event.preventDefault();
       const pin = document.getElementById('pinLoginInput').value.trim();
@@ -1263,22 +1265,34 @@
       const statusEl = document.getElementById('pinLoginStatus');
       statusEl.innerText = 'ログイン中...';
 
-      // staff@<domain> (単一店舗) と staff01@<domain>〜staff09@<domain> (店舗別PIN) を順番に試す。
-      // 店舗別PINでログインできた場合は、店舗一覧の該当する行を自動選択する。
-      const candidates = [`staff@${sharedLoginEmailBase}`];
-      for (let i = 1; i <= 9; i++) {
+      // 前回この端末でログインできたメールアドレスを最優先で試す。これにより、
+      // 通常のログイン（PINが合っている場合）はFirebase Authへのサインイン試行が
+      // 1回で済む。候補を毎回何件も試すと、Firebase側の連続失敗検知
+      // （しばらく全ログインがロックされる auth/too-many-requests）を誘発しうるため、
+      // 「初回ログイン・端末のキャッシュ消去後」等の限られた場面でのみ複数候補を試す。
+      const cachedEmail = localStorage.getItem(CACHED_LOGIN_EMAIL_KEY);
+      const candidates = [];
+      if (cachedEmail) candidates.push(cachedEmail);
+      candidates.push(`staff@${sharedLoginEmailBase}`);
+      for (let i = 1; i <= 5; i++) {
         candidates.push(`staff${String(i).padStart(2, '0')}@${sharedLoginEmailBase}`);
       }
+      const uniqueCandidates = [...new Set(candidates)];
 
-      for (const email of candidates) {
+      for (const email of uniqueCandidates) {
         try {
           await firebase.auth().signInWithEmailAndPassword(email, pin);
           sharedLoginEmail = email;
           sharedLoginPin = pin;
+          localStorage.setItem(CACHED_LOGIN_EMAIL_KEY, email);
           const m = email.match(/^staff(\d{2})@/);
           pendingAutoStoreIndex = m ? parseInt(m[1], 10) - 1 : null;
           return;
         } catch (e) {
+          if (e.code === 'auth/too-many-requests') {
+            statusEl.innerText = 'ログイン試行が続いたため一時的に制限されています。しばらく待ってから再度お試しください。';
+            return;
+          }
           // 次の候補を試す
         }
       }
