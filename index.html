@@ -831,6 +831,16 @@
       <div id="dbStatus" class="status">未設定</div>
     </div>
 
+    <details>
+      <summary>🔥 Firebaseデータベース設定</summary>
+      <div style="margin-top: 10px;">
+        <p style="font-size: 0.8rem; color: #666;">Firebaseコンソールでプロジェクトを作成し、Firestore Database・Authenticationの「メール/パスワード」プロバイダ・Storage（写真アップロード用）を用意した上で、ウェブアプリのConfigをここに貼り付けてください。通常の機能はこの店舗共通のPINコードでログインします（🔐管理者チャットのみ別途、本人のメールアドレスでのログインが必要です）。</p>
+        <label for="firebaseConfig">Firebase Config (JSON)</label>
+        <textarea id="firebaseConfig" rows="6" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","storageBucket":"...","messagingSenderId":"...","appId":"..."}'></textarea>
+        <button class="btn-secondary" onclick="saveFirebaseConfig()">💾 保存して接続</button>
+      </div>
+    </details>
+
     <details open>
       <summary>👤 あなたの名前</summary>
       <div style="margin-top: 10px;">
@@ -1003,15 +1013,6 @@
       </div>
     </details>
 
-    <details>
-      <summary>🔥 Firebaseデータベース設定</summary>
-      <div style="margin-top: 10px;">
-        <p style="font-size: 0.8rem; color: #666;">Firebaseコンソールでプロジェクトを作成し、Firestore Database・Authenticationの「メール/パスワード」プロバイダ・Storage（写真アップロード用）を用意した上で、ウェブアプリのConfigをここに貼り付けてください。通常の機能はこの店舗共通のPINコードでログインします（🔐管理者チャットのみ別途、本人のメールアドレスでのログインが必要です）。</p>
-        <label for="firebaseConfig">Firebase Config (JSON)</label>
-        <textarea id="firebaseConfig" rows="6" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","storageBucket":"...","messagingSenderId":"...","appId":"..."}'></textarea>
-        <button class="btn-secondary" onclick="saveFirebaseConfig()">💾 保存して接続</button>
-      </div>
-    </details>
   </div>
 
   <!-- ===== 手書きサイン モーダル ===== -->
