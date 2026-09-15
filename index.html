@@ -118,6 +118,8 @@
     .import-preview-body { font-size: 0.82rem; color: #666; white-space: pre-wrap; max-height: 90px; overflow-y: auto; }
 
     /* ===== 連絡ノート: 引継ぎウィザード ===== */
+    .handover-prev-answer { font-size: 0.78rem; color: #777; background: #f4f6f8; border-left: 3px solid #dde2eb; border-radius: 0 6px 6px 0; padding: 7px 10px; margin-bottom: 12px; line-height: 1.5; }
+    .handover-prev-answer .handover-prev-detail { color: #555; }
     .handover-answer-row { display: flex; gap: 10px; margin-bottom: 12px; }
     .handover-answer-btn { flex: 1; padding: 18px 8px; border-radius: 10px; border: 2px solid #dde2eb; background: white; font-weight: bold; font-size: 0.95rem; color: #333; }
     .handover-answer-btn.selected.yes-selected { border-color: #dc3545; background: #fdecea; color: #dc3545; }
@@ -404,6 +406,7 @@
         <div class="chat-bubble chat-bubble-other" style="margin-bottom: 12px;">
           <h2 id="handoverQuestionText" style="margin: 0; font-size: 1rem;"></h2>
         </div>
+        <div class="handover-prev-answer" id="handoverPrevAnswer" style="display: none;"></div>
         <div class="handover-answer-row" id="handoverYesNoRow">
           <button class="handover-answer-btn" id="handoverYesBtn" onclick="selectHandoverAnswer('yes')" data-i18n="notebook.wizard.yes">⚠️ あり</button>
           <button class="handover-answer-btn" id="handoverNoBtn" onclick="selectHandoverAnswer('no')" data-i18n="notebook.wizard.no">✅ なし</button>
@@ -1188,6 +1191,8 @@
         'notebook.wizard.detail.label': 'Details (optional)',
         'notebook.wizard.detail.placeholder': 'Add details if any',
         'notebook.wizard.questionWord': 'Question',
+        'notebook.wizard.prev.label': 'Last time',
+        'notebook.wizard.prev.countUnit': '',
         'notebook.wizard.back': '‹ Back',
         'notebook.wizard.next': 'Next ›',
         'notebook.wizard.toPreview': 'To preview ›',
@@ -1305,6 +1310,8 @@
         'notebook.wizard.detail.label': 'विवरण (वैकल्पिक)',
         'notebook.wizard.detail.placeholder': 'विशेष विवरण भए लेख्नुहोस्',
         'notebook.wizard.questionWord': 'प्रश्न',
+        'notebook.wizard.prev.label': 'गत पटक',
+        'notebook.wizard.prev.countUnit': ' वटा',
         'notebook.wizard.back': '‹ फिर्ता',
         'notebook.wizard.next': 'अर्को ›',
         'notebook.wizard.toPreview': 'पूर्वावलोकनमा जानुहोस् ›',
@@ -2487,27 +2494,17 @@
     let handoverAnswers = [];
     let handoverWizardItems = [];
 
-    function buildHandoverCarryOverItems() {
+    // 前回の引継ぎの回答を項目ごとに引く。回答の参考として小さく表示するためのもので、
+    // 入力の初期値には使わない（前回の内容をそのまま引き写せてしまうため）
+    function findPreviousHandoverAnswer(item) {
       const visible = visibleForActiveStore(notebookEntries);
       const latestHandover = visible.find(e => e.type === 'handover');
-      if (!latestHandover || !Array.isArray(latestHandover.answers)) return [];
-      const carryOver = [];
-      latestHandover.answers.forEach(a => {
-        const isCount = a.answerType === 'count';
-        const wasIncluded = isCount ? (parseInt(a.count, 10) > 0) : a.answer === 'yes';
-        if (!wasIncluded) return;
-        let label = a.yesTemplate || a.question;
-        if (isCount) {
-          const n = parseInt(a.count, 10);
-          label = label.includes('{n}') ? label.replace('{n}', n) : `${label}: ${n}件`;
-        }
-        carryOver.push({
-          id: null, isCarryOver: true, answerType: 'yesno', important: false,
-          question: `🔁 前回の引継ぎ「${label}」はまだ未解決ですか？`,
-          yesTemplate: `持ち越し: ${label}`
-        });
-      });
-      return carryOver;
+      if (!latestHandover || !Array.isArray(latestHandover.answers)) return null;
+      const prev = latestHandover.answers.find(a =>
+        (item.id && a.itemId === item.id) || a.question === item.question
+      );
+      if (!prev) return null;
+      return { answer: prev, entry: latestHandover };
     }
 
     function startHandoverWizard() {
@@ -2515,7 +2512,7 @@
         alert('引継ぎ項目が登録されていません。⚙️→🔒オーナー設定で項目を追加してください。');
         return;
       }
-      handoverWizardItems = [...buildHandoverCarryOverItems(), ...handoverItems];
+      handoverWizardItems = [...handoverItems];
       handoverWizardIndex = 0;
       handoverAnswers = handoverWizardItems.map(item => ({
         itemId: item.id, question: item.question, yesTemplate: item.yesTemplate,
@@ -2536,6 +2533,7 @@
       const total = handoverWizardItems.length;
       document.getElementById('handoverProgressLabel').innerText = `${t('notebook.wizard.questionWord') || '質問'} ${handoverWizardIndex + 1} / ${total}`;
       document.getElementById('handoverQuestionText').innerText = item.question;
+      renderHandoverPrevAnswer(item);
 
       const isCount = item.answerType === 'count';
       document.getElementById('handoverYesNoRow').style.display = isCount ? 'none' : 'flex';
@@ -2563,6 +2561,37 @@
         ? (t('notebook.wizard.toPreview') || 'プレビューへ ›')
         : (t('notebook.wizard.next') || '次へ ›');
       document.getElementById('handoverPrevBtn').style.visibility = handoverWizardIndex === 0 ? 'hidden' : 'visible';
+    }
+
+    function renderHandoverPrevAnswer(item) {
+      const el = document.getElementById('handoverPrevAnswer');
+      const prev = findPreviousHandoverAnswer(item);
+      if (!prev) { el.style.display = 'none'; el.innerHTML = ''; return; }
+
+      const a = prev.answer;
+      let valueText;
+      if (a.answerType === 'count') {
+        const n = parseInt(a.count, 10);
+        if (isNaN(n)) { el.style.display = 'none'; el.innerHTML = ''; return; }
+        valueText = `${n}${t('notebook.wizard.prev.countUnit') || '件'}`;
+      } else if (a.answer === 'yes') {
+        valueText = t('notebook.wizard.yes') || '⚠️ あり';
+      } else if (a.answer === 'no') {
+        valueText = t('notebook.wizard.no') || '✅ なし';
+      } else {
+        el.style.display = 'none'; el.innerHTML = '';
+        return;
+      }
+
+      const label = t('notebook.wizard.prev.label') || '前回';
+      const time = formatEntryTime(prev.entry); // サーバータイムスタンプ確定前などは空になる
+      const head = time ? `${label}（${time}）` : label;
+      let html = `${escapeHtml(head)}: ${escapeHtml(valueText)}`;
+      if (a.detail) {
+        html += `<br><span class="handover-prev-detail">${escapeHtml(a.detail)}</span>`;
+      }
+      el.innerHTML = html;
+      el.style.display = 'block';
     }
 
     function selectHandoverAnswer(value) {
