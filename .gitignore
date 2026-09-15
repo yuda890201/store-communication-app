@@ -1,2 +1,5 @@
 .DS_Store
 *.log
+
+# テスト実行時に生成される画像
+tests/**/*.png
