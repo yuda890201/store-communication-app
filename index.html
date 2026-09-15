@@ -882,6 +882,8 @@
       <button class="btn-primary" onclick="doOwnerLogin()">ログイン</button>
       <div class="status" id="ownerLoginStatus"></div>
     </div>
+
+    <button class="btn-clear" id="settingsLogoutBtn" style="width: 100%; margin-top: 18px; display: none;" onclick="doSettingsLogout()">🚪 ログアウト</button>
   </div>
 
   <!-- ===== オーナー設定パネル ===== -->
@@ -1630,6 +1632,18 @@
       document.getElementById('pinOwnerLoginStatus').innerText = '';
     }
 
+    // 共通PINでログイン中はログアウト導線が管理者チャット内にしかなく、
+    // 店舗別PINへの切り替えがブラウザのデータ削除以外でできなくなるため
+    async function doSettingsLogout() {
+      if (!firebase.apps.length) return;
+      if (!confirm('ログアウトします。再開するにはPINコードの入力が必要です。よろしいですか？')) return;
+      sharedLoginPin = null;
+      sharedLoginEmail = null;
+      localStorage.removeItem(CACHED_LOGIN_EMAIL_KEY);
+      closeSideDrawer();
+      await firebase.auth().signOut();
+    }
+
     function togglePinOwnerLogin() {
       const box = document.getElementById('pinOwnerLoginBox');
       box.style.display = box.style.display === 'none' ? 'block' : 'none';
@@ -1676,22 +1690,26 @@
       const uniqueCandidates = [...new Set(candidates)];
 
       for (const email of uniqueCandidates) {
+        // サインイン前に設定する。Firestoreはローカルキャッシュから即座に
+        // onSnapshotを発火させることがあり、成功後に設定すると店舗の自動選択を取りこぼす
+        const m = email.match(/^staff(\d{2})@/);
+        pendingAutoStoreIndex = m ? parseInt(m[1], 10) - 1 : null;
         try {
           await firebase.auth().signInWithEmailAndPassword(email, pin);
           sharedLoginEmail = email;
           sharedLoginPin = pin;
           localStorage.setItem(CACHED_LOGIN_EMAIL_KEY, email);
-          const m = email.match(/^staff(\d{2})@/);
-          pendingAutoStoreIndex = m ? parseInt(m[1], 10) - 1 : null;
           return;
         } catch (e) {
           if (e.code === 'auth/too-many-requests') {
+            pendingAutoStoreIndex = null;
             statusEl.innerText = 'ログイン試行が続いたため一時的に制限されています。しばらく待ってから再度お試しください。';
             return;
           }
           // 次の候補を試す
         }
       }
+      pendingAutoStoreIndex = null;
       statusEl.innerText = 'PINコードが違います';
     }
 
@@ -1748,6 +1766,7 @@
           if (sharedLogin) sharedLoginEmail = user.email;
           currentUser = (user && !user.isAnonymous && !sharedLogin) ? user : null;
           renderAdminChatUI();
+          document.getElementById('settingsLogoutBtn').style.display = user ? 'block' : 'none';
 
           if (!user) {
             firebaseReady = false;
