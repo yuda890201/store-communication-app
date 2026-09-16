@@ -987,6 +987,16 @@
     </details>
 
     <details>
+      <summary>🏦 金庫の現在の状況を確認</summary>
+      <div style="margin-top: 10px;">
+        <p style="font-size: 0.8rem; color: #666;">金庫アプリに登録されているすべての金庫（事務所金庫を含む）の、最新の点検結果をその場で読みます。表示するだけでこのアプリには保存しないため、古い値が残ったりスタッフに見えたりすることはありません。</p>
+        <button class="btn-secondary" onclick="loadKinkoSafeStatus()">🔄 最新の状況を読み込む</button>
+        <div id="kinkoSafeStatusMsg" class="status"></div>
+        <div id="kinkoSafeStatusList"></div>
+      </div>
+    </details>
+
+    <details>
       <summary>📊 店舗別 引継ぎ状況（本部確認用）</summary>
       <div style="margin-top: 10px;">
         <p style="font-size: 0.8rem; color: #666;">各店舗の本日の引継ぎ作成状況と、最新の引継ぎが次のシフトに確認されているかを一覧できます。</p>
@@ -3043,11 +3053,21 @@
       return kinkoAuthPromise;
     }
 
+    async function fetchKinkoStores(kdb) {
+      const masterDoc = await kdb.collection('meta').doc('storeMaster').get();
+      return (masterDoc.exists && masterDoc.data().stores) || [];
+    }
+
+    async function fetchLatestRecordByStoreId(kdb, storeId) {
+      const snap = await kdb.collection('storesConfig').doc(storeId)
+        .collection('records').orderBy('datetime', 'desc').limit(1).get();
+      return snap.empty ? null : snap.docs[0].data();
+    }
+
     async function fetchLatestKinkoRecord(storeName) {
       const kdb = await getKinkoDb();
       if (!kdb) throw new Error('金庫アプリの連携設定がされていません（🔒オーナー設定から登録してください）');
-      const masterDoc = await kdb.collection('meta').doc('storeMaster').get();
-      const stores = (masterDoc.exists && masterDoc.data().stores) || [];
+      const stores = await fetchKinkoStores(kdb);
       // 両アプリで店舗名の付け方が違うため、オーナー設定の対応付けを通してから照合する
       const own = (storeName || '').trim();
       const target = ((kinkoStoreMap && kinkoStoreMap[own]) || own).trim();
@@ -3096,6 +3116,37 @@
       });
       if (r.memo) lines.push(`備考: ${r.memo}`);
       return lines.join('\n');
+    }
+
+    // 事務所金庫など、店舗の引継ぎに紐づかない金庫の状況を、責任者がその場で確認するためのもの。
+    // 意図的にどこにも保存しない（スタッフに見せない・古い値が残らない）
+    async function loadKinkoSafeStatus() {
+      const listEl = document.getElementById('kinkoSafeStatusList');
+      const statusEl = document.getElementById('kinkoSafeStatusMsg');
+      listEl.innerHTML = '';
+      statusEl.innerText = '読み込み中...';
+      try {
+        const kdb = await getKinkoDb();
+        if (!kdb) throw new Error('金庫アプリの連携設定がされていません');
+        const stores = await fetchKinkoStores(kdb);
+        if (!stores.length) throw new Error('金庫アプリに店舗が登録されていません');
+
+        const results = await Promise.all(stores.map(async s => ({
+          name: s.name || '(名称未設定)',
+          record: s.id ? await fetchLatestRecordByStoreId(kdb, s.id) : null
+        })));
+
+        listEl.innerHTML = results.map(({ name, record }) => {
+          const body = record
+            ? escapeHtml(formatKinkoRecordText(record))
+            : escapeHtml('まだ記録がありません');
+          return `<div class="kinko-block"><div class="kinko-block-title">${escapeHtml(name)}</div>`
+            + `<div class="kinko-block-body">${body}</div></div>`;
+        }).join('');
+        statusEl.innerText = `${results.length}件を読み込みました（${new Date().toLocaleString('ja-JP')} 時点）`;
+      } catch (e) {
+        statusEl.innerText = '読み込めませんでした: ' + e.message;
+      }
     }
 
     async function attachKinkoRecord(entryId, storeName, btn) {

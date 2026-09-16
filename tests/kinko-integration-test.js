@@ -81,8 +81,14 @@ const path = require('path');
       stores: [
         { id: 'store-1', name: '1号店', target: 200000 },
         { id: 'store-kiyokawa', name: '福岡清川二丁目店', target: 200000 },
-        { id: 'store-sumiyoshi', name: '博多住吉通り店', target: 200000 }
+        { id: 'store-sumiyoshi', name: '博多住吉通り店', target: 200000 },
+        // 事務所（バックルーム）の金庫。店舗の引継ぎには紐づかず、責任者だけが確認する
+        { id: 'safe-office', name: '事務所金庫', target: 500000 }
       ]
+    });
+    kdb.collection('storesConfig').doc('safe-office').collection('records').add({
+      datetime: '2026-09-16T08:00', storeId: 'safe-office', storeName: '事務所金庫',
+      vaultTotal: '498,000', vaultTarget: 500000, vaultDiff: '-2,000', memo: '両替分未精算'
     });
     const recs = kdb.collection('storesConfig').doc('store-kiyokawa').collection('records');
     recs.add({
@@ -166,6 +172,31 @@ const path = require('path');
     await page.waitForTimeout(900);
   }
   console.log('unmatched store surfaces an error (expect true):', dialogs.some(m => m.includes('店舗が見つかりません')));
+
+  // ===== 事務所金庫の状況をその場で確認できること（保存はしない） =====
+  await page.evaluate(() => openView('home'));
+  await page.waitForTimeout(200);
+  await page.click('.home-topbar .settings-btn:has-text("⚙️")');
+  await page.waitForTimeout(200);
+  await page.click('button[onclick="openOwnerDrawer()"]');
+  await page.waitForTimeout(300);
+  await page.evaluate(() => {
+    document.querySelector('button[onclick="loadKinkoSafeStatus()"]').closest('details').open = true;
+    // ここから先の書き込みだけを見たいので、一度リセットする
+    window.__firestoreWrites = [];
+  });
+  console.log('nothing listed before loading (expect 0):', await page.locator('#kinkoSafeStatusList .kinko-block').count());
+  await page.click('button[onclick="loadKinkoSafeStatus()"]');
+  await page.waitForTimeout(900);
+  console.log('lists every safe in the safe app (expect 4):', await page.locator('#kinkoSafeStatusList .kinko-block').count());
+  const safeText = await page.locator('#kinkoSafeStatusList').innerText();
+  console.log('includes the back-room safe (expect true):', safeText.includes('事務所金庫') && safeText.includes('498,000'));
+  console.log('includes its memo (expect true):', safeText.includes('両替分未精算'));
+  // 記録がまだ無い店舗でも空欄にせず、そう書く
+  console.log('store with no record says so (expect true):', safeText.includes('まだ記録がありません'));
+  console.log('status message shows the count (expect true):', (await page.locator('#kinkoSafeStatusMsg').innerText()).includes('4件'));
+  // 意図的にどこにも保存しない（古い値が残らない・スタッフに見えない）
+  console.log('saved nothing anywhere (expect []):', JSON.stringify(await page.evaluate(() => window.__firestoreWrites)));
 
   console.log('errors:', JSON.stringify(errors));
   await browser.close();
