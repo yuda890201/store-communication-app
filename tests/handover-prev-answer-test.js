@@ -71,16 +71,16 @@ const PORT = process.env.PORT || 8175;
 
   // 入力欄は空のまま = 前回値が引き継がれていないこと
   console.log('yes not preselected (expect false):', await page.evaluate(() => document.getElementById('handoverYesBtn').classList.contains('selected')));
-  console.log('detail input empty (expect empty string):', JSON.stringify(await page.locator('#handoverDetailInput').inputValue()));
+  // あり／なしの質問に詳細欄は出さない（引継ぎのテンポを落とさないため）
+  console.log('detail field not shown on yes/no (expect false):', await page.locator('#handoverDetailWrap').isVisible());
 
   // ===== 2問目 (件数タイプ) =====
   await page.click('#handoverYesBtn');
   await page.waitForTimeout(150);
-  await page.fill('#handoverDetailInput', '今回は過不足なし扱いで確認済み');
   await page.click('#handoverNextBtn');
   await page.waitForTimeout(300);
   console.log('second question prev answer (expect 前回 + 2件):', JSON.stringify(await page.locator('#handoverPrevAnswer').innerText()));
-  console.log('count input empty (expect empty string):', JSON.stringify(await page.locator('#handoverCountInput').inputValue()));
+  console.log('no count preselected (expect 0):', await page.locator('#handoverCountGrid button.selected').count());
 
   console.log('errors:', JSON.stringify(errors));
   await browser.close();
