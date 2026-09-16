@@ -120,6 +120,14 @@
     /* ===== 連絡ノート: 引継ぎウィザード ===== */
     .handover-prev-answer { font-size: 0.78rem; color: #777; background: #f4f6f8; border-left: 3px solid #dde2eb; border-radius: 0 6px 6px 0; padding: 7px 10px; margin-bottom: 12px; line-height: 1.5; }
     .handover-prev-answer .handover-prev-detail { color: #555; }
+    .handover-count-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 8px; margin-bottom: 12px; }
+    .handover-count-btn { padding: 14px 4px; border-radius: 10px; border: 2px solid #dde2eb; background: white; font-weight: bold; font-size: 1rem; color: #333; }
+    .handover-count-btn.selected { border-color: #0084ff; background: #e7f1ff; color: #0d6efd; }
+    .handover-count-btn.wide { grid-column: 1 / -1; font-size: 0.9rem; }
+    .handover-photo-preview { width: 100%; max-width: 100%; border-radius: 8px; margin-top: 10px; }
+    .handover-preset-btn { display: block; width: 100%; text-align: left; padding: 12px 14px; border-radius: 10px; border: 2px solid #dde2eb; background: white; font-size: 0.9rem; color: #333; margin-bottom: 8px; }
+    .handover-preset-btn.selected { border-color: #0084ff; background: #e7f1ff; color: #0d6efd; font-weight: bold; }
+    .handover-kinko-link { display: block; width: 100%; margin-top: 16px; text-align: center; text-decoration: none; padding: 16px 8px; font-size: 1rem; }
     .handover-answer-row { display: flex; gap: 10px; margin-bottom: 12px; }
     .handover-answer-btn { flex: 1; padding: 18px 8px; border-radius: 10px; border: 2px solid #dde2eb; background: white; font-weight: bold; font-size: 0.95rem; color: #333; }
     .handover-answer-btn.selected.yes-selected { border-color: #dc3545; background: #fdecea; color: #dc3545; }
@@ -412,12 +420,22 @@
           <button class="handover-answer-btn" id="handoverNoBtn" onclick="selectHandoverAnswer('no')" data-i18n="notebook.wizard.no">✅ なし</button>
         </div>
         <div id="handoverCountRow" style="display: none;">
-          <label for="handoverCountInput" data-i18n="notebook.wizard.count.label">件数</label>
-          <input type="number" id="handoverCountInput" min="0" inputmode="numeric" placeholder="例: 3" oninput="updateHandoverCount(this.value)" data-i18n-placeholder="notebook.wizard.count.placeholder">
+          <label data-i18n="notebook.wizard.count.label">件数</label>
+          <div class="handover-count-grid" id="handoverCountGrid"></div>
+        </div>
+        <div id="handoverPresetWrap" style="display: none;">
+          <label data-i18n="notebook.wizard.presets.label">当てはまるものを選んでください（複数可）</label>
+          <div id="handoverPresetList"></div>
         </div>
         <div id="handoverDetailWrap" style="display: none;">
           <label for="handoverDetailInput" data-i18n="notebook.wizard.detail.label">詳細（任意）</label>
           <textarea id="handoverDetailInput" rows="2" placeholder="具体的な内容があれば入力してください" data-i18n-placeholder="notebook.wizard.detail.placeholder"></textarea>
+        </div>
+        <div id="handoverPhotoRow" style="display: none;">
+          <label for="handoverPhotoInput" data-i18n="notebook.wizard.photo.label">写真</label>
+          <input type="file" id="handoverPhotoInput" accept="image/*" capture="environment" onchange="uploadHandoverPhoto(this.files)">
+          <div class="status" id="handoverPhotoStatus"></div>
+          <img id="handoverPhotoPreview" class="handover-photo-preview" alt="" style="display: none;">
         </div>
       </div>
 
@@ -425,7 +443,14 @@
         <button class="btn-clear" id="handoverPrevBtn" onclick="prevHandoverStep()" data-i18n="notebook.wizard.back">‹ 戻る</button>
         <button class="btn-primary" id="handoverNextBtn" onclick="nextHandoverStep()" data-i18n="notebook.wizard.next">次へ ›</button>
       </div>
-      <button class="btn-clear" style="width: 100%; margin-top: 8px;" onclick="cancelHandoverWizard()" data-i18n="notebook.wizard.cancel">✕ 中止する</button>
+      <button class="btn-clear" id="handoverCancelBtn" style="width: 100%; margin-top: 8px;" onclick="cancelHandoverWizard()" data-i18n="notebook.wizard.cancel">✕ 中止する</button>
+
+      <div class="card" id="handoverDoneCard" style="display: none; margin-top: 14px; text-align: center;">
+        <h2 data-i18n="notebook.wizard.done.title">✅ 引継ぎを投稿しました</h2>
+        <p style="font-size: 0.85rem; color: #666;" data-i18n="notebook.wizard.done.kinko">最後に金庫の確認をすると引継ぎ完了です。</p>
+        <a id="handoverKinkoLink" class="btn-primary handover-kinko-link" href="#" target="_blank" rel="noopener" data-i18n="notebook.wizard.done.openKinko">🔐 金庫アプリを開く</a>
+        <button class="btn-clear" style="width: 100%; margin-top: 10px;" onclick="closeHandoverWizard()" data-i18n="notebook.wizard.done.close">閉じる</button>
+      </div>
 
       <div class="card" id="handoverPreviewCard" style="display: none; margin-top: 14px;">
         <h2 data-i18n="notebook.wizard.previewTitle">📋 引継ぎ書プレビュー（編集できます）</h2>
@@ -918,10 +943,16 @@
         <label for="handoverQuestionInput">質問文</label>
         <input type="text" id="handoverQuestionInput" placeholder="例: レジの過不足はありましたか？">
         <label for="handoverAnswerTypeInput">回答タイプ</label>
-        <select id="handoverAnswerTypeInput">
+        <select id="handoverAnswerTypeInput" onchange="onHandoverAnswerTypeChange()">
           <option value="yesno">あり／なし</option>
-          <option value="count">件数（数字を入力）</option>
+          <option value="count">件数（0〜10からタップで選択）</option>
+          <option value="photo">写真を撮る（必須・撮るまで次に進めません）</option>
+          <option value="presets">あり／なし＋選択式（複数選択・詳細・写真）</option>
         </select>
+        <div id="handoverPresetOptionsWrap" style="display: none;">
+          <label for="handoverPresetOptionsInput">選択肢（1行に1項目）</label>
+          <textarea id="handoverPresetOptionsInput" rows="4" placeholder="接客クレーム&#10;商品の不良・異物&#10;会計トラブル（誤精算・返金）"></textarea>
+        </div>
         <label for="handoverTemplateInput">引継ぎ書に載せる定型文（件数タイプは「{n}」が入力された数字に置き換わります）</label>
         <input type="text" id="handoverTemplateInput" placeholder="例: レジ過不足あり／店頭受取荷物: {n}件">
         <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; font-size: 0.85rem;">
@@ -930,6 +961,12 @@
         </label>
         <button class="btn-primary" onclick="addHandoverItem()">➕ 項目を追加</button>
         <button class="btn-secondary" style="margin-top: 8px;" onclick="seedDefaultHandoverItems()">🌱 サンプル項目を追加する</button>
+
+        <p style="font-size: 0.8rem; color: #666; margin-top: 14px;">引継ぎを投稿したあと、金庫アプリを開くボタンを表示します。金庫の確認までを引継ぎの最後の手順にできます。空欄にすると、ボタンは表示されず投稿してそのまま終了します。</p>
+        <label for="kinkoAppUrlInput">金庫アプリのURL</label>
+        <input type="text" id="kinkoAppUrlInput" placeholder="https://..." oninput="this.dataset.userEdited = '1'">
+        <button class="btn-secondary" onclick="saveKinkoAppUrl()">💾 保存</button>
+        <div id="kinkoAppUrlStatus" class="status"></div>
       </div>
     </details>
 
@@ -1193,6 +1230,17 @@
         'notebook.wizard.questionWord': 'Question',
         'notebook.wizard.prev.label': 'Last time',
         'notebook.wizard.prev.countUnit': '',
+        'notebook.wizard.prev.photo': '📷 Photo attached',
+        'notebook.wizard.count.orMore': ' or more',
+        'notebook.wizard.count.orMoreSuffix': ' or more',
+        'notebook.wizard.photo.label': 'Photo',
+        'notebook.wizard.photo.uploading': 'Uploading...',
+        'notebook.wizard.photo.failed': 'Photo upload failed: ',
+        'notebook.wizard.presets.label': 'Select all that apply',
+        'notebook.wizard.done.title': '✅ Handover posted',
+        'notebook.wizard.done.kinko': 'Finish by checking the safe.',
+        'notebook.wizard.done.openKinko': '🔐 Open the safe app',
+        'notebook.wizard.done.close': 'Close',
         'notebook.wizard.back': '‹ Back',
         'notebook.wizard.next': 'Next ›',
         'notebook.wizard.toPreview': 'To preview ›',
@@ -1312,6 +1360,17 @@
         'notebook.wizard.questionWord': 'प्रश्न',
         'notebook.wizard.prev.label': 'गत पटक',
         'notebook.wizard.prev.countUnit': ' वटा',
+        'notebook.wizard.prev.photo': '📷 फोटो छ',
+        'notebook.wizard.count.orMore': ' वा बढी',
+        'notebook.wizard.count.orMoreSuffix': ' वा बढी',
+        'notebook.wizard.photo.label': 'फोटो',
+        'notebook.wizard.photo.uploading': 'अपलोड हुँदैछ...',
+        'notebook.wizard.photo.failed': 'फोटो अपलोड असफल भयो: ',
+        'notebook.wizard.presets.label': 'लागू हुने सबै छान्नुहोस्',
+        'notebook.wizard.done.title': '✅ बुझाउने विवरण पोस्ट भयो',
+        'notebook.wizard.done.kinko': 'अन्त्यमा तिजोरी जाँच गर्नुहोस्।',
+        'notebook.wizard.done.openKinko': '🔐 तिजोरी एप खोल्नुहोस्',
+        'notebook.wizard.done.close': 'बन्द गर्नुहोस्',
         'notebook.wizard.back': '‹ फिर्ता',
         'notebook.wizard.next': 'अर्को ›',
         'notebook.wizard.toPreview': 'पूर्वावलोकनमा जानुहोस् ›',
@@ -1822,6 +1881,7 @@
     }
 
     let cachedCustomTrainingName = '';
+    let kinkoAppUrl = ''; // 引継ぎ完了後に受け渡す金庫アプリのURL
     function renderTrainingProgramName() {
       const name = cachedCustomTrainingName || t('home.training.default') || 'トレーニング管理';
       document.getElementById('trainingCardLabel').innerText = name;
@@ -1834,6 +1894,10 @@
         renderTrainingProgramName();
         const name = cachedCustomTrainingName || t('home.training.default') || 'トレーニング管理';
         document.getElementById('trainingNameInput').placeholder = name;
+
+        kinkoAppUrl = (doc.exists && doc.data().kinkoAppUrl) || '';
+        const kinkoInput = document.getElementById('kinkoAppUrlInput');
+        if (kinkoInput && !kinkoInput.dataset.userEdited) kinkoInput.value = kinkoAppUrl;
 
         const troubleReportConfig = doc.exists && doc.data().troubleReportConfig;
         const troubleReportConfigInput = document.getElementById('troubleReportConfigInput');
@@ -2393,16 +2457,42 @@
       const question = qInput.value.trim();
       const yesTemplate = tInput.value.trim();
       if (!question) return;
+      const presetInput = document.getElementById('handoverPresetOptionsInput');
+      const presetOptions = typeInput.value === 'presets'
+        ? presetInput.value.split('\n').map(s => s.trim()).filter(Boolean)
+        : [];
       db.collection('handoverItems').add({
         question, yesTemplate,
         answerType: typeInput.value,
+        presetOptions,
         important: importantInput.checked,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       qInput.value = '';
       tInput.value = '';
       typeInput.value = 'yesno';
+      presetInput.value = '';
       importantInput.checked = false;
+      onHandoverAnswerTypeChange();
+    }
+
+    function saveKinkoAppUrl() {
+      if (!requireDb()) return;
+      const input = document.getElementById('kinkoAppUrlInput');
+      const statusEl = document.getElementById('kinkoAppUrlStatus');
+      const url = input.value.trim();
+      if (url && !/^https?:\/\//i.test(url)) {
+        statusEl.innerText = 'URLは http:// または https:// で始めてください';
+        return;
+      }
+      db.collection('appSettings').doc('general').set({ kinkoAppUrl: url }, { merge: true });
+      delete input.dataset.userEdited;
+      statusEl.innerText = '✅ 保存しました';
+    }
+
+    function onHandoverAnswerTypeChange() {
+      const isPresets = document.getElementById('handoverAnswerTypeInput').value === 'presets';
+      document.getElementById('handoverPresetOptionsWrap').style.display = isPresets ? 'block' : 'none';
     }
 
     function deleteHandoverItem(id) {
@@ -2517,7 +2607,7 @@
       handoverAnswers = handoverWizardItems.map(item => ({
         itemId: item.id, question: item.question, yesTemplate: item.yesTemplate,
         answerType: item.answerType || 'yesno', important: !!item.important,
-        answer: null, count: '', detail: ''
+        answer: null, count: '', detail: '', photoUrl: '', selectedPresets: []
       }));
       document.getElementById('notebookMainPanel').style.display = 'none';
       document.getElementById('handoverWizard').style.display = 'block';
@@ -2536,14 +2626,22 @@
       renderHandoverPrevAnswer(item);
 
       const isCount = item.answerType === 'count';
-      document.getElementById('handoverYesNoRow').style.display = isCount ? 'none' : 'flex';
+      const isPhoto = item.answerType === 'photo';
+      const isPresets = item.answerType === 'presets';
+      const isYesNoLike = !isCount && !isPhoto;
+
+      document.getElementById('handoverYesNoRow').style.display = isYesNoLike ? 'flex' : 'none';
       document.getElementById('handoverCountRow').style.display = isCount ? 'block' : 'none';
+      document.getElementById('handoverPhotoRow').style.display = isPhoto ? 'block' : 'none';
 
       let answered;
       if (isCount) {
-        document.getElementById('handoverCountInput').value = answer.count !== '' && answer.count != null ? answer.count : '';
-        document.getElementById('handoverDetailWrap').style.display = 'block';
+        renderHandoverCountGrid(answer);
         answered = answer.count !== '' && answer.count != null;
+      } else if (isPhoto) {
+        renderHandoverPhoto(answer);
+        // 写真タイプは記録が目的なので、撮るまで先に進めない
+        answered = !!answer.photoUrl;
       } else {
         const yesBtn = document.getElementById('handoverYesBtn');
         const noBtn = document.getElementById('handoverNoBtn');
@@ -2551,8 +2649,17 @@
         yesBtn.classList.toggle('yes-selected', answer.answer === 'yes');
         noBtn.classList.toggle('selected', answer.answer === 'no');
         noBtn.classList.toggle('no-selected', answer.answer === 'no');
-        document.getElementById('handoverDetailWrap').style.display = answer.answer === 'yes' ? 'block' : 'none';
         answered = !!answer.answer;
+      }
+
+      // 詳細と写真は、トラブル等の選択式で「あり」のときだけ出す
+      const showExtras = isPresets && answer.answer === 'yes';
+      document.getElementById('handoverPresetWrap').style.display = showExtras ? 'block' : 'none';
+      document.getElementById('handoverDetailWrap').style.display = showExtras ? 'block' : 'none';
+      if (showExtras) {
+        renderHandoverPresetList(item, answer);
+        document.getElementById('handoverPhotoRow').style.display = 'block';
+        renderHandoverPhoto(answer);
       }
       document.getElementById('handoverDetailInput').value = answer.detail || '';
 
@@ -2561,6 +2668,87 @@
         ? (t('notebook.wizard.toPreview') || 'プレビューへ ›')
         : (t('notebook.wizard.next') || '次へ ›');
       document.getElementById('handoverPrevBtn').style.visibility = handoverWizardIndex === 0 ? 'hidden' : 'visible';
+    }
+
+    const HANDOVER_COUNT_MAX = 10; // これを超える件数は「{n}件以上」の1つにまとめる
+
+    function renderHandoverCountGrid(answer) {
+      const grid = document.getElementById('handoverCountGrid');
+      grid.innerHTML = '';
+      const current = answer.count === '' || answer.count == null ? null : parseInt(answer.count, 10);
+      for (let n = 0; n <= HANDOVER_COUNT_MAX; n++) {
+        const btn = document.createElement('button');
+        btn.className = 'handover-count-btn' + (current === n ? ' selected' : '');
+        btn.innerText = String(n);
+        btn.onclick = () => selectHandoverCount(n);
+        grid.appendChild(btn);
+      }
+      const over = document.createElement('button');
+      const overValue = HANDOVER_COUNT_MAX + 1;
+      over.className = 'handover-count-btn wide' + (current === overValue ? ' selected' : '');
+      over.innerText = `${overValue}${t('notebook.wizard.count.orMore') || '件以上'}`;
+      over.onclick = () => selectHandoverCount(overValue);
+      grid.appendChild(over);
+    }
+
+    function selectHandoverCount(n) {
+      handoverAnswers[handoverWizardIndex].count = n;
+      renderHandoverStep();
+    }
+
+    function renderHandoverPresetList(item, answer) {
+      const list = document.getElementById('handoverPresetList');
+      list.innerHTML = '';
+      const options = Array.isArray(item.presetOptions) ? item.presetOptions : [];
+      const selected = Array.isArray(answer.selectedPresets) ? answer.selectedPresets : [];
+      options.forEach(opt => {
+        const btn = document.createElement('button');
+        const on = selected.includes(opt);
+        btn.className = 'handover-preset-btn' + (on ? ' selected' : '');
+        btn.innerText = (on ? '☑️ ' : '⬜️ ') + opt;
+        btn.onclick = () => toggleHandoverPreset(opt);
+        list.appendChild(btn);
+      });
+    }
+
+    function toggleHandoverPreset(option) {
+      const answer = handoverAnswers[handoverWizardIndex];
+      const selected = Array.isArray(answer.selectedPresets) ? [...answer.selectedPresets] : [];
+      const i = selected.indexOf(option);
+      if (i >= 0) selected.splice(i, 1); else selected.push(option);
+      answer.selectedPresets = selected;
+      answer.detail = document.getElementById('handoverDetailInput').value.trim();
+      renderHandoverStep();
+    }
+
+    function renderHandoverPhoto(answer) {
+      const img = document.getElementById('handoverPhotoPreview');
+      const input = document.getElementById('handoverPhotoInput');
+      document.getElementById('handoverPhotoStatus').innerText = '';
+      input.value = '';
+      if (answer.photoUrl) {
+        img.src = answer.photoUrl;
+        img.style.display = 'block';
+      } else {
+        img.removeAttribute('src');
+        img.style.display = 'none';
+      }
+    }
+
+    async function uploadHandoverPhoto(files) {
+      const rawFile = files && files[0];
+      if (!rawFile || !requireDb()) return;
+      const statusEl = document.getElementById('handoverPhotoStatus');
+      statusEl.innerText = t('notebook.wizard.photo.uploading') || 'アップロード中...';
+      try {
+        const file = await compressImageIfNeeded(rawFile);
+        const ref = storage.ref().child('handoverPhotos/' + Date.now() + '_' + file.name);
+        const snap = await ref.put(file);
+        handoverAnswers[handoverWizardIndex].photoUrl = await snap.ref.getDownloadURL();
+        renderHandoverStep();
+      } catch (e) {
+        statusEl.innerText = (t('notebook.wizard.photo.failed') || '写真のアップロードに失敗しました: ') + e.message;
+      }
     }
 
     function renderHandoverPrevAnswer(item) {
@@ -2573,7 +2761,11 @@
       if (a.answerType === 'count') {
         const n = parseInt(a.count, 10);
         if (isNaN(n)) { el.style.display = 'none'; el.innerHTML = ''; return; }
-        valueText = `${n}${t('notebook.wizard.prev.countUnit') || '件'}`;
+        const unit = t('notebook.wizard.prev.countUnit') || '件';
+        valueText = n > HANDOVER_COUNT_MAX ? `${n}${unit}${t('notebook.wizard.count.orMoreSuffix') || '以上'}` : `${n}${unit}`;
+      } else if (a.answerType === 'photo') {
+        if (!a.photoUrl) { el.style.display = 'none'; el.innerHTML = ''; return; }
+        valueText = t('notebook.wizard.prev.photo') || '📷 写真あり';
       } else if (a.answer === 'yes') {
         valueText = t('notebook.wizard.yes') || '⚠️ あり';
       } else if (a.answer === 'no') {
@@ -2587,22 +2779,25 @@
       const time = formatEntryTime(prev.entry); // サーバータイムスタンプ確定前などは空になる
       const head = time ? `${label}（${time}）` : label;
       let html = `${escapeHtml(head)}: ${escapeHtml(valueText)}`;
-      if (a.detail) {
-        html += `<br><span class="handover-prev-detail">${escapeHtml(a.detail)}</span>`;
+      const sub = [];
+      if (Array.isArray(a.selectedPresets) && a.selectedPresets.length) sub.push(a.selectedPresets.join('／'));
+      if (a.detail) sub.push(a.detail);
+      if (sub.length) {
+        html += `<br><span class="handover-prev-detail">${escapeHtml(sub.join(' / '))}</span>`;
       }
       el.innerHTML = html;
       el.style.display = 'block';
     }
 
     function selectHandoverAnswer(value) {
-      handoverAnswers[handoverWizardIndex].answer = value;
-      if (value === 'no') handoverAnswers[handoverWizardIndex].detail = '';
+      const answer = handoverAnswers[handoverWizardIndex];
+      answer.answer = value;
+      if (value === 'no') {
+        answer.detail = '';
+        answer.selectedPresets = [];
+        answer.photoUrl = '';
+      }
       renderHandoverStep();
-    }
-
-    function updateHandoverCount(value) {
-      handoverAnswers[handoverWizardIndex].count = value;
-      document.getElementById('handoverNextBtn').disabled = !(value !== '' && value != null);
     }
 
     function nextHandoverStep() {
@@ -2626,18 +2821,28 @@
       const included = [];
       answers.forEach(a => {
         const isCount = a.answerType === 'count';
+        const isPhoto = a.answerType === 'photo';
         let include, n;
         if (isCount) {
           n = parseInt(a.count, 10);
           include = !isNaN(n) && n > 0;
+        } else if (isPhoto) {
+          include = !!a.photoUrl;
         } else {
           include = a.answer === 'yes';
         }
         if (!include) return;
         let base = a.yesTemplate || a.question;
-        if (isCount) base = base.includes('{n}') ? base.replace('{n}', n) : `${base}: ${n}件`;
+        if (isCount) {
+          const shown = n > HANDOVER_COUNT_MAX ? `${n}件以上` : `${n}件`;
+          base = base.includes('{n}') ? base.replace('{n}', n) : `${base}: ${shown}`;
+        }
         let line = '・' + (a.important ? '【重要】' : '') + base;
+        if (Array.isArray(a.selectedPresets) && a.selectedPresets.length) {
+          line += `\n　→ ${a.selectedPresets.join('／')}`;
+        }
         if (a.detail) line += `\n　→ ${a.detail}`;
+        if (a.photoUrl) line += `\n　→ 📷 写真あり`;
         included.push({ line, important: !!a.important });
       });
       return included;
@@ -2659,6 +2864,11 @@
 
     function closeHandoverWizard() {
       document.getElementById('handoverWizard').style.display = 'none';
+      document.getElementById('handoverDoneCard').style.display = 'none';
+      document.getElementById('handoverQuestionCard').style.display = 'block';
+      document.querySelector('#handoverWizard .flow-nav').style.display = 'flex';
+      document.getElementById('handoverProgressLabel').style.display = '';
+      document.getElementById('handoverCancelBtn').style.display = '';
       document.getElementById('notebookMainPanel').style.display = 'block';
     }
 
@@ -2676,7 +2886,23 @@
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       await postImportantHandoverItemsToBulletin(handoverAnswers, docRef.id);
-      closeHandoverWizard();
+      showHandoverDone();
+    }
+
+    // 投稿後、金庫アプリへの受け渡しを出す。URL未設定ならそのまま閉じる
+    function showHandoverDone() {
+      if (!kinkoAppUrl) { closeHandoverWizard(); return; }
+      document.getElementById('handoverPreviewCard').style.display = 'none';
+      document.getElementById('handoverQuestionCard').style.display = 'none';
+      document.querySelector('#handoverWizard .flow-nav').style.display = 'none';
+      // 投稿後なので、進捗表示と中止は意味をなさない
+      document.getElementById('handoverProgressLabel').style.display = 'none';
+      document.getElementById('handoverCancelBtn').style.display = 'none';
+      document.getElementById('handoverDoneCard').style.display = 'block';
+
+      // 自動で開かずタップさせるのは、投稿の通信を挟むとブラウザが
+      // ユーザー操作とみなさず、ポップアップとして遮断されるため
+      document.getElementById('handoverKinkoLink').href = kinkoAppUrl;
     }
 
     function postImportantHandoverItemsToBulletin(answers, entryId) {
