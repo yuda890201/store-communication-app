@@ -127,9 +127,7 @@
     .handover-photo-preview { width: 100%; max-width: 100%; border-radius: 8px; margin-top: 10px; }
     .handover-preset-btn { display: block; width: 100%; text-align: left; padding: 12px 14px; border-radius: 10px; border: 2px solid #dde2eb; background: white; font-size: 0.9rem; color: #333; margin-bottom: 8px; }
     .handover-preset-btn.selected { border-color: #0084ff; background: #e7f1ff; color: #0d6efd; font-weight: bold; }
-    .handover-kinko-qr { display: flex; justify-content: center; margin: 16px 0 10px; }
-    .handover-kinko-qr img, .handover-kinko-qr canvas, .handover-kinko-qr table { max-width: 100%; }
-    .handover-kinko-url { display: block; font-size: 0.8rem; color: #0d6efd; word-break: break-all; }
+    .handover-kinko-link { display: block; width: 100%; margin-top: 16px; text-align: center; text-decoration: none; padding: 16px 8px; font-size: 1rem; }
     .handover-answer-row { display: flex; gap: 10px; margin-bottom: 12px; }
     .handover-answer-btn { flex: 1; padding: 18px 8px; border-radius: 10px; border: 2px solid #dde2eb; background: white; font-weight: bold; font-size: 0.95rem; color: #333; }
     .handover-answer-btn.selected.yes-selected { border-color: #dc3545; background: #fdecea; color: #dc3545; }
@@ -449,10 +447,9 @@
 
       <div class="card" id="handoverDoneCard" style="display: none; margin-top: 14px; text-align: center;">
         <h2 data-i18n="notebook.wizard.done.title">✅ 引継ぎを投稿しました</h2>
-        <p style="font-size: 0.85rem; color: #666;" data-i18n="notebook.wizard.done.kinko">続けて金庫の確認をしてください。店用スマホで下のQRを読み取ると金庫アプリが開きます。</p>
-        <div id="handoverKinkoQr" class="handover-kinko-qr"></div>
-        <a id="handoverKinkoUrl" class="handover-kinko-url" href="#" target="_blank" rel="noopener"></a>
-        <button class="btn-clear" style="width: 100%; margin-top: 14px;" onclick="closeHandoverWizard()" data-i18n="notebook.wizard.done.close">閉じる</button>
+        <p style="font-size: 0.85rem; color: #666;" data-i18n="notebook.wizard.done.kinko">最後に金庫の確認をすると引継ぎ完了です。</p>
+        <a id="handoverKinkoLink" class="btn-primary handover-kinko-link" href="#" target="_blank" rel="noopener" data-i18n="notebook.wizard.done.openKinko">🔐 金庫アプリを開く</a>
+        <button class="btn-clear" style="width: 100%; margin-top: 10px;" onclick="closeHandoverWizard()" data-i18n="notebook.wizard.done.close">閉じる</button>
       </div>
 
       <div class="card" id="handoverPreviewCard" style="display: none; margin-top: 14px;">
@@ -965,7 +962,7 @@
         <button class="btn-primary" onclick="addHandoverItem()">➕ 項目を追加</button>
         <button class="btn-secondary" style="margin-top: 8px;" onclick="seedDefaultHandoverItems()">🌱 サンプル項目を追加する</button>
 
-        <p style="font-size: 0.8rem; color: #666; margin-top: 14px;">引継ぎを投稿したあと、金庫の確認に進むためのQRコードを表示します。店用スマホで読み取ると金庫アプリが開きます。空欄にすると、QRは表示されず投稿してそのまま終了します。</p>
+        <p style="font-size: 0.8rem; color: #666; margin-top: 14px;">引継ぎを投稿したあと、金庫アプリを開くボタンを表示します。金庫の確認までを引継ぎの最後の手順にできます。空欄にすると、ボタンは表示されず投稿してそのまま終了します。</p>
         <label for="kinkoAppUrlInput">金庫アプリのURL</label>
         <input type="text" id="kinkoAppUrlInput" placeholder="https://..." oninput="this.dataset.userEdited = '1'">
         <button class="btn-secondary" onclick="saveKinkoAppUrl()">💾 保存</button>
@@ -1120,8 +1117,6 @@
   <div id="printArea"></div>
 
   <script src="vendor/jszip.min.js"></script>
-  <!-- 引継ぎ完了後の金庫アプリ受け渡し用。読み込めなかった場合もURLは表示されるので、フローは止まらない -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
@@ -1243,7 +1238,8 @@
         'notebook.wizard.photo.failed': 'Photo upload failed: ',
         'notebook.wizard.presets.label': 'Select all that apply',
         'notebook.wizard.done.title': '✅ Handover posted',
-        'notebook.wizard.done.kinko': 'Next, check the safe. Scan the QR code below with the store phone to open the safe app.',
+        'notebook.wizard.done.kinko': 'Finish by checking the safe.',
+        'notebook.wizard.done.openKinko': '🔐 Open the safe app',
         'notebook.wizard.done.close': 'Close',
         'notebook.wizard.back': '‹ Back',
         'notebook.wizard.next': 'Next ›',
@@ -1372,7 +1368,8 @@
         'notebook.wizard.photo.failed': 'फोटो अपलोड असफल भयो: ',
         'notebook.wizard.presets.label': 'लागू हुने सबै छान्नुहोस्',
         'notebook.wizard.done.title': '✅ बुझाउने विवरण पोस्ट भयो',
-        'notebook.wizard.done.kinko': 'अब तिजोरी जाँच गर्नुहोस्। तलको QR स्टोरको फोनले स्क्यान गरे तिजोरी एप खुल्छ।',
+        'notebook.wizard.done.kinko': 'अन्त्यमा तिजोरी जाँच गर्नुहोस्।',
+        'notebook.wizard.done.openKinko': '🔐 तिजोरी एप खोल्नुहोस्',
         'notebook.wizard.done.close': 'बन्द गर्नुहोस्',
         'notebook.wizard.back': '‹ फिर्ता',
         'notebook.wizard.next': 'अर्को ›',
@@ -2903,23 +2900,9 @@
       document.getElementById('handoverCancelBtn').style.display = 'none';
       document.getElementById('handoverDoneCard').style.display = 'block';
 
-      const link = document.getElementById('handoverKinkoUrl');
-      link.href = kinkoAppUrl;
-      link.innerText = kinkoAppUrl;
-
-      // QRライブラリが読めなかった場合でも、上のURLから辿れるようにしてある
-      const qrBox = document.getElementById('handoverKinkoQr');
-      qrBox.innerHTML = '';
-      try {
-        if (typeof qrcode === 'function') {
-          const qr = qrcode(0, 'M');
-          qr.addData(kinkoAppUrl);
-          qr.make();
-          qrBox.innerHTML = qr.createImgTag(5, 8);
-        }
-      } catch (e) {
-        qrBox.innerHTML = '';
-      }
+      // 自動で開かずタップさせるのは、投稿の通信を挟むとブラウザが
+      // ユーザー操作とみなさず、ポップアップとして遮断されるため
+      document.getElementById('handoverKinkoLink').href = kinkoAppUrl;
     }
 
     function postImportantHandoverItemsToBulletin(answers, entryId) {

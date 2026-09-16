@@ -18,10 +18,6 @@ const path = require('path');
     window.__mockUsers = {
       'staff@my-store-1234.local': { password: 'pin1234', user: { uid: 'shared-uid', isAnonymous: false, email: 'staff@my-store-1234.local', displayName: null } }
     };
-    // QRライブラリはCDNから読むためこの環境では届かない。呼び出し側の結線だけ検証する
-    window.qrcode = function () {
-      return { addData() {}, make() {}, createImgTag() { return '<img alt="qr" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=">'; } };
-    };
   });
   await page.goto(`http://localhost:${PORT}/index.html`);
   await page.waitForTimeout(300);
@@ -107,8 +103,10 @@ const path = require('path');
   await page.click('button[onclick="submitHandover()"]');
   await page.waitForTimeout(700);
   console.log('done card shown (expect true):', await page.locator('#handoverDoneCard').isVisible());
-  console.log('kinko url shown as fallback (expect https://example.com/kinko/):', await page.locator('#handoverKinkoUrl').innerText());
-  console.log('qr rendered into container (expect true):', await page.locator('#handoverKinkoQr img').count() > 0);
+  console.log('open-safe-app button visible (expect true):', await page.locator('#handoverKinkoLink').isVisible());
+  console.log('button points at the configured url (expect https://example.com/kinko/):', await page.locator('#handoverKinkoLink').getAttribute('href'));
+  console.log('progress label hidden after posting (expect false):', await page.locator('#handoverProgressLabel').isVisible());
+  console.log('cancel button hidden after posting (expect false):', await page.locator('#handoverCancelBtn').isVisible());
   await page.click('button[onclick="closeHandoverWizard()"]');
   await page.waitForTimeout(300);
   console.log('wizard closed, list visible again (expect true):', await page.locator('#notebookMainPanel').isVisible());
