@@ -50,12 +50,35 @@ function installFirebaseMock() {
     }
 
     function makeColRef(colPath) {
-      const state = { whereField: null, whereVal: null };
+      const state = { whereField: null, whereVal: null, orderField: null, orderDir: 'asc', limitN: null };
+
+      // このコレクション直下のドキュメントに where/orderBy/limit を適用して返す
+      function collectDocs() {
+        let docs = Object.keys(docStore)
+          .filter(k => k.startsWith(colPath + '/') && k.split('/').length === colPath.split('/').length + 1)
+          .map(k => ({ id: k.split('/').pop(), data: () => docStore[k] }));
+        if (state.whereField) docs = docs.filter(d => d.data()[state.whereField] === state.whereVal);
+        if (state.orderField) {
+          const f = state.orderField;
+          docs.sort((a, b) => {
+            const av = a.data()[f], bv = b.data()[f];
+            if (av === bv) return 0;
+            return (av > bv ? 1 : -1) * (state.orderDir === 'desc' ? -1 : 1);
+          });
+        }
+        if (state.limitN != null) docs = docs.slice(0, state.limitN);
+        return docs;
+      }
+
       const ref = {
         doc(id) { return makeDocRef(colPath, id || 'auto' + (idCounter++)); },
-        orderBy() { return ref; },
-        limit() { return ref; },
+        orderBy(field, dir) { state.orderField = field; state.orderDir = dir || 'asc'; return ref; },
+        limit(n) { state.limitN = n; return ref; },
         where(field, op, val) { state.whereField = field; state.whereVal = val; return ref; },
+        async get() {
+          const docs = collectDocs();
+          return { docs, empty: docs.length === 0, size: docs.length };
+        },
         async add(data) {
           const id = 'auto' + (idCounter++);
           docStore[colPath + '/' + id] = { ...data };

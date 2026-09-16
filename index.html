@@ -120,6 +120,9 @@
     /* ===== 連絡ノート: 引継ぎウィザード ===== */
     .handover-prev-answer { font-size: 0.78rem; color: #777; background: #f4f6f8; border-left: 3px solid #dde2eb; border-radius: 0 6px 6px 0; padding: 7px 10px; margin-bottom: 12px; line-height: 1.5; }
     .handover-prev-answer .handover-prev-detail { color: #555; }
+    .kinko-block { background: #f4f6f8; border-left: 3px solid #0084ff; border-radius: 0 6px 6px 0; padding: 10px 12px; margin-top: 10px; }
+    .kinko-block-title { font-size: 0.8rem; font-weight: bold; color: #0d6efd; margin-bottom: 4px; }
+    .kinko-block-body { font-size: 0.82rem; color: #444; white-space: pre-wrap; line-height: 1.6; }
     .handover-count-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 8px; margin-bottom: 12px; }
     .handover-count-btn { padding: 14px 4px; border-radius: 10px; border: 2px solid #dde2eb; background: white; font-weight: bold; font-size: 1rem; color: #333; }
     .handover-count-btn.selected { border-color: #0084ff; background: #e7f1ff; color: #0d6efd; }
@@ -375,6 +378,7 @@
       <div class="card">
         <label data-i18n="notebook.latestHandover.label">📋 最新の引継ぎ</label>
         <div id="latestHandoverContent" class="entry-body">まだ引継ぎがありません</div>
+        <div class="kinko-block" id="latestHandoverKinko" style="display: none;"></div>
         <div class="entry-meta" id="latestHandoverMeta"></div>
         <div id="latestHandoverConfirmList" class="ack-signer-list" style="margin-top: 8px;"></div>
         <button class="btn-outline" id="latestHandoverConfirmBtn" style="width: 100%; margin-top: 8px; display: none;" onclick="confirmLatestHandover()" data-i18n="notebook.confirmBtn">✅ 確認しました（次のシフト担当者はこちら）</button>
@@ -967,6 +971,12 @@
         <input type="text" id="kinkoAppUrlInput" placeholder="https://..." oninput="this.dataset.userEdited = '1'">
         <button class="btn-secondary" onclick="saveKinkoAppUrl()">💾 保存</button>
         <div id="kinkoAppUrlStatus" class="status"></div>
+
+        <p style="font-size: 0.8rem; color: #666; margin-top: 14px;">金庫アプリの記録を引継ぎ書に取り込むための接続情報です。金庫アプリの担当者から受け取ったJSONを貼り付けてください（<code>firebaseConfig</code> に <code>viewerEmail</code> と <code>viewerPassword</code> を加えたもの）。読み取り専用で参照し、書き込みは一切しません。</p>
+        <label for="kinkoConfigInput">金庫アプリ連携設定 (JSON)</label>
+        <textarea id="kinkoConfigInput" rows="6" placeholder='{"apiKey":"...","projectId":"...","viewerEmail":"...","viewerPassword":"..."}' oninput="this.dataset.userEdited = '1'"></textarea>
+        <button class="btn-secondary" onclick="saveKinkoConfig()">💾 保存</button>
+        <div id="kinkoConfigStatus" class="status"></div>
       </div>
     </details>
 
@@ -1241,6 +1251,9 @@
         'notebook.wizard.done.kinko': 'Finish by checking the safe.',
         'notebook.wizard.done.openKinko': '🔐 Open the safe app',
         'notebook.wizard.done.close': 'Close',
+        'notebook.kinko.title': 'Safe / register cash check',
+        'notebook.kinko.attach': 'Import safe result',
+        'notebook.kinko.print': 'Print',
         'notebook.wizard.back': '‹ Back',
         'notebook.wizard.next': 'Next ›',
         'notebook.wizard.toPreview': 'To preview ›',
@@ -1371,6 +1384,9 @@
         'notebook.wizard.done.kinko': 'अन्त्यमा तिजोरी जाँच गर्नुहोस्।',
         'notebook.wizard.done.openKinko': '🔐 तिजोरी एप खोल्नुहोस्',
         'notebook.wizard.done.close': 'बन्द गर्नुहोस्',
+        'notebook.kinko.title': 'तिजोरी / क्यास जाँच',
+        'notebook.kinko.attach': 'तिजोरीको नतिजा ल्याउनुहोस्',
+        'notebook.kinko.print': 'प्रिन्ट',
         'notebook.wizard.back': '‹ फिर्ता',
         'notebook.wizard.next': 'अर्को ›',
         'notebook.wizard.toPreview': 'पूर्वावलोकनमा जानुहोस् ›',
@@ -1899,6 +1915,12 @@
         const kinkoInput = document.getElementById('kinkoAppUrlInput');
         if (kinkoInput && !kinkoInput.dataset.userEdited) kinkoInput.value = kinkoAppUrl;
 
+        kinkoConfig = (doc.exists && doc.data().kinkoConfig) || null;
+        const kinkoConfigInput = document.getElementById('kinkoConfigInput');
+        if (kinkoConfig && kinkoConfigInput && !kinkoConfigInput.dataset.userEdited) {
+          kinkoConfigInput.value = JSON.stringify(kinkoConfig, null, 2);
+        }
+
         const troubleReportConfig = doc.exists && doc.data().troubleReportConfig;
         const troubleReportConfigInput = document.getElementById('troubleReportConfigInput');
         if (troubleReportConfig) {
@@ -2365,6 +2387,7 @@
       const latestHandover = visible.find(e => e.type === 'handover');
       const latestContent = document.getElementById('latestHandoverContent');
       const latestMeta = document.getElementById('latestHandoverMeta');
+      const latestKinko = document.getElementById('latestHandoverKinko');
       if (latestContent) {
         if (latestHandover) {
           latestContent.innerText = latestHandover.text;
@@ -2372,6 +2395,16 @@
         } else {
           latestContent.innerText = t('notebook.latestHandover.none') || 'まだ引継ぎがありません。「📋 引継ぎを作成する」から作成してください。';
           latestMeta.innerText = '';
+        }
+      }
+      if (latestKinko) {
+        if (latestHandover && latestHandover.kinkoRecord) {
+          latestKinko.innerHTML = `<div class="kinko-block-title">🔐 ${escapeHtml(t('notebook.kinko.title') || '金庫・レジ現金点検')}</div>`
+            + `<div class="kinko-block-body">${escapeHtml(formatKinkoRecordText(latestHandover.kinkoRecord))}</div>`;
+          latestKinko.style.display = 'block';
+        } else {
+          latestKinko.innerHTML = '';
+          latestKinko.style.display = 'none';
         }
       }
 
@@ -2434,8 +2467,30 @@
         body.innerText = e.text;
         card.appendChild(body);
 
+        if (e.type === 'handover' && e.kinkoRecord) {
+          const kinko = document.createElement('div');
+          kinko.className = 'kinko-block';
+          kinko.innerHTML = `<div class="kinko-block-title">🔐 ${escapeHtml(t('notebook.kinko.title') || '金庫・レジ現金点検')}</div>`
+            + `<div class="kinko-block-body">${escapeHtml(formatKinkoRecordText(e.kinkoRecord))}</div>`;
+          card.appendChild(kinko);
+        }
+
         const actions = document.createElement('div');
         actions.className = 'entry-actions';
+        if (e.type === 'handover') {
+          if (!e.kinkoRecord) {
+            const kinkoBtn = document.createElement('button');
+            kinkoBtn.className = 'btn-outline';
+            kinkoBtn.innerText = '🔐 ' + (t('notebook.kinko.attach') || '金庫の結果を取り込む');
+            kinkoBtn.onclick = () => attachKinkoRecord(e.id, e.store || activeStore, kinkoBtn);
+            actions.appendChild(kinkoBtn);
+          }
+          const printBtn = document.createElement('button');
+          printBtn.className = 'btn-outline';
+          printBtn.innerText = '🖨️ ' + (t('notebook.kinko.print') || '印刷');
+          printBtn.onclick = () => printHandoverDoc(e.text || '', e.author || '', formatEntryTime(e), e.kinkoRecord);
+          actions.appendChild(printBtn);
+        }
         const delBtn = document.createElement('button');
         delBtn.className = 'btn-clear';
         delBtn.innerText = '削除';
@@ -2486,6 +2541,19 @@
         return;
       }
       db.collection('appSettings').doc('general').set({ kinkoAppUrl: url }, { merge: true });
+      delete input.dataset.userEdited;
+      statusEl.innerText = '✅ 保存しました';
+    }
+
+    function saveKinkoConfig() {
+      if (!requireDb()) return;
+      const input = document.getElementById('kinkoConfigInput');
+      const statusEl = document.getElementById('kinkoConfigStatus');
+      const val = input.value.trim();
+      if (!val) return;
+      let parsed;
+      try { parsed = JSON.parse(val); } catch (e) { statusEl.innerText = 'JSON形式が不正です: ' + e.message; return; }
+      db.collection('appSettings').doc('general').set({ kinkoConfig: parsed }, { merge: true });
       delete input.dataset.userEdited;
       statusEl.innerText = '✅ 保存しました';
     }
@@ -2916,9 +2984,81 @@
       });
     }
 
+    // ===== 金庫アプリ連携 (別プロジェクトのFirestoreを読み取り専用で参照) =====
+    let kinkoConfig = null;
+    let kinkoDb = null;
+    let kinkoAuthPromise = null;
+
+    async function getKinkoDb() {
+      if (kinkoDb) return kinkoDb;
+      if (!kinkoConfig || !kinkoConfig.apiKey || !kinkoConfig.viewerEmail || !kinkoConfig.viewerPassword) return null;
+      if (!kinkoAuthPromise) {
+        kinkoAuthPromise = (async () => {
+          const app = firebase.apps.find(a => a.name === 'kinkoApp')
+            || firebase.initializeApp(kinkoConfig, 'kinkoApp');
+          await app.auth().signInWithEmailAndPassword(kinkoConfig.viewerEmail, kinkoConfig.viewerPassword);
+          kinkoDb = app.firestore();
+          return kinkoDb;
+        })().catch(e => {
+          kinkoAuthPromise = null; // 失敗を抱え込むと再試行できなくなる
+          throw e;
+        });
+      }
+      return kinkoAuthPromise;
+    }
+
+    async function fetchLatestKinkoRecord(storeName) {
+      const kdb = await getKinkoDb();
+      if (!kdb) throw new Error('金庫アプリの連携設定がされていません（🔒オーナー設定から登録してください）');
+      const masterDoc = await kdb.collection('meta').doc('storeMaster').get();
+      const stores = (masterDoc.exists && masterDoc.data().stores) || [];
+      const target = (storeName || '').trim();
+      const match = stores.find(s => (s.name || '').trim() === target);
+      if (!match) throw new Error(`金庫アプリ側に「${target}」という店舗が見つかりません`);
+      const snap = await kdb.collection('storesConfig').doc(match.id)
+        .collection('records').orderBy('datetime', 'desc').limit(1).get();
+      if (snap.empty) throw new Error('金庫アプリにこの店舗の記録がまだありません');
+      return snap.docs[0].data();
+    }
+
+    // 金庫アプリのA4レポートと同じ項目・同じ値を並べる（Delta付きではなく素の値）
+    function formatKinkoRecordText(r) {
+      if (!r) return '';
+      const lines = [];
+      lines.push(`点検日時: ${String(r.datetime || '').replace('T', ' ')}`);
+      const target = typeof r.vaultTarget === 'number' ? r.vaultTarget.toLocaleString() : (r.vaultTarget || '');
+      lines.push(`金庫 実査合計: ${r.vaultTotal || ''} 円 ／ 設定金額: ${target} 円 ／ 過不足: ${r.vaultDiff || ''} 円`);
+      [['reg1', '1レジ'], ['reg2', '2レジ']].forEach(([key, label]) => {
+        const reg = r[key];
+        if (!reg) return;
+        lines.push(`${label} 担当: ${reg.staff || '未設定'} ／ 現金過不足: ${reg.cashDiff || '0'} ／ 無料券: ${reg.freeCouponDiff || '0'}枚 ／ 割引券: ${reg.discCouponDiff || '0'}枚`);
+      });
+      if (r.memo) lines.push(`備考: ${r.memo}`);
+      return lines.join('\n');
+    }
+
+    async function attachKinkoRecord(entryId, storeName, btn) {
+      if (!requireDb()) return;
+      const original = btn.innerText;
+      btn.disabled = true;
+      btn.innerText = '取り込み中...';
+      try {
+        const record = await fetchLatestKinkoRecord(storeName);
+        await db.collection('notebookEntries').doc(entryId).update({ kinkoRecord: record });
+      } catch (e) {
+        alert('金庫の結果を取り込めませんでした:\n' + e.message);
+        btn.disabled = false;
+        btn.innerText = original;
+      }
+    }
+
     // ===== 引継ぎ書の印刷 =====
-    function printHandoverDoc(text, author, timeText) {
+    function printHandoverDoc(text, author, timeText, kinkoRecord) {
       const printArea = document.getElementById('printArea');
+      const kinkoHtml = kinkoRecord
+        ? `<h2 style="font-size: 1rem; margin: 16px 0 6px; border-bottom: 1px solid #333;">金庫・レジ現金点検</h2>
+           <div class="print-note" style="white-space: pre-wrap; font-size: 0.95rem;">${escapeHtml(formatKinkoRecordText(kinkoRecord))}</div>`
+        : '';
       printArea.innerHTML = `
         <div class="print-doc">
           <div class="print-store-header">${escapeHtml(activeStore || '')}</div>
@@ -2926,6 +3066,7 @@
           <div class="print-field-row"><span class="pf-label">日時:</span>${escapeHtml(timeText)}</div>
           <div class="print-field-row"><span class="pf-label">担当:</span>${escapeHtml(author)}</div>
           <div class="print-note" style="white-space: pre-wrap; font-size: 0.95rem; margin-top: 12px;">${escapeHtml(text)}</div>
+          ${kinkoHtml}
           <div class="print-note">印刷日: ${new Date().toLocaleString('ja-JP')}</div>
         </div>
       `;
@@ -2940,7 +3081,7 @@
       const visible = visibleForActiveStore(notebookEntries);
       const entry = visible.find(e => e.type === 'handover');
       if (!entry) return;
-      printHandoverDoc(entry.text || '', entry.author || '', formatEntryTime(entry));
+      printHandoverDoc(entry.text || '', entry.author || '', formatEntryTime(entry), entry.kinkoRecord);
     }
 
     function confirmLatestHandover() {
