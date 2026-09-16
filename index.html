@@ -977,6 +977,12 @@
         <textarea id="kinkoConfigInput" rows="6" placeholder='{"apiKey":"...","projectId":"...","viewerEmail":"...","viewerPassword":"..."}' oninput="this.dataset.userEdited = '1'"></textarea>
         <button class="btn-secondary" onclick="saveKinkoConfig()">💾 保存</button>
         <div id="kinkoConfigStatus" class="status"></div>
+
+        <p style="font-size: 0.8rem; color: #666; margin-top: 14px;">このアプリと金庫アプリで店舗名の付け方が違う場合に登録します。<code>このアプリの店舗名 = 金庫アプリの店舗名</code> の形で、1行に1件書いてください。名前が同じ店舗は書く必要はありません。</p>
+        <label for="kinkoStoreMapInput">金庫アプリの店舗の対応付け</label>
+        <textarea id="kinkoStoreMapInput" rows="3" placeholder="清川二丁目 = 福岡清川二丁目店&#10;博多住吉通り = 博多住吉通り店" oninput="this.dataset.userEdited = '1'"></textarea>
+        <button class="btn-secondary" onclick="saveKinkoStoreMap()">💾 保存</button>
+        <div id="kinkoStoreMapStatus" class="status"></div>
       </div>
     </details>
 
@@ -1921,6 +1927,12 @@
           kinkoConfigInput.value = JSON.stringify(kinkoConfig, null, 2);
         }
 
+        kinkoStoreMap = (doc.exists && doc.data().kinkoStoreMap) || {};
+        const kinkoMapInput = document.getElementById('kinkoStoreMapInput');
+        if (kinkoMapInput && !kinkoMapInput.dataset.userEdited) {
+          kinkoMapInput.value = Object.entries(kinkoStoreMap).map(([k, v]) => `${k} = ${v}`).join('\n');
+        }
+
         const troubleReportConfig = doc.exists && doc.data().troubleReportConfig;
         const troubleReportConfigInput = document.getElementById('troubleReportConfigInput');
         if (troubleReportConfig) {
@@ -2558,6 +2570,29 @@
       statusEl.innerText = '✅ 保存しました';
     }
 
+    function saveKinkoStoreMap() {
+      if (!requireDb()) return;
+      const input = document.getElementById('kinkoStoreMapInput');
+      const statusEl = document.getElementById('kinkoStoreMapStatus');
+      const map = {};
+      const bad = [];
+      input.value.split('\n').map(s => s.trim()).filter(Boolean).forEach(line => {
+        const i = line.indexOf('=');
+        if (i < 0) { bad.push(line); return; }
+        const own = line.slice(0, i).trim();
+        const kinko = line.slice(i + 1).trim();
+        if (!own || !kinko) { bad.push(line); return; }
+        map[own] = kinko;
+      });
+      if (bad.length) {
+        statusEl.innerText = '「=」で区切れていない行があります: ' + bad.join(' / ');
+        return;
+      }
+      db.collection('appSettings').doc('general').set({ kinkoStoreMap: map }, { merge: true });
+      delete input.dataset.userEdited;
+      statusEl.innerText = `✅ ${Object.keys(map).length}件の対応付けを保存しました`;
+    }
+
     function onHandoverAnswerTypeChange() {
       const isPresets = document.getElementById('handoverAnswerTypeInput').value === 'presets';
       document.getElementById('handoverPresetOptionsWrap').style.display = isPresets ? 'block' : 'none';
@@ -2986,6 +3021,7 @@
 
     // ===== 金庫アプリ連携 (別プロジェクトのFirestoreを読み取り専用で参照) =====
     let kinkoConfig = null;
+    let kinkoStoreMap = {}; // このアプリの店舗名 → 金庫アプリ側の店舗名
     let kinkoDb = null;
     let kinkoAuthPromise = null;
 
@@ -3012,26 +3048,51 @@
       if (!kdb) throw new Error('金庫アプリの連携設定がされていません（🔒オーナー設定から登録してください）');
       const masterDoc = await kdb.collection('meta').doc('storeMaster').get();
       const stores = (masterDoc.exists && masterDoc.data().stores) || [];
-      const target = (storeName || '').trim();
+      // 両アプリで店舗名の付け方が違うため、オーナー設定の対応付けを通してから照合する
+      const own = (storeName || '').trim();
+      const target = ((kinkoStoreMap && kinkoStoreMap[own]) || own).trim();
       const match = stores.find(s => (s.name || '').trim() === target);
-      if (!match) throw new Error(`金庫アプリ側に「${target}」という店舗が見つかりません`);
+      if (!match) {
+        const available = stores.map(s => s.name).filter(Boolean).join('、');
+        throw new Error(
+          `金庫アプリ側に「${target}」という店舗が見つかりません。\n\n`
+          + `金庫アプリに登録されている店舗:\n${available || '（なし）'}\n\n`
+          + `名前が違う場合は、🔒オーナー設定の「金庫アプリの店舗の対応付け」に\n「${own} = 金庫アプリ側の店舗名」の形で登録してください。`
+        );
+      }
       const snap = await kdb.collection('storesConfig').doc(match.id)
         .collection('records').orderBy('datetime', 'desc').limit(1).get();
       if (snap.empty) throw new Error('金庫アプリにこの店舗の記録がまだありません');
       return snap.docs[0].data();
     }
 
-    // 金庫アプリのA4レポートと同じ項目・同じ値を並べる（Delta付きではなく素の値）
+    // 「+1,234」「-500」のような表示用の文字列から数値を取り出す
+    function parseAmount(v) {
+      const n = parseInt(String(v == null ? '' : v).replace(/[^0-9+-]/g, ''), 10);
+      return isNaN(n) ? 0 : n;
+    }
+
+    // 金庫アプリのA4レポートと同じ項目を並べる
     function formatKinkoRecordText(r) {
       if (!r) return '';
       const lines = [];
       lines.push(`点検日時: ${String(r.datetime || '').replace('T', ' ')}`);
       const target = typeof r.vaultTarget === 'number' ? r.vaultTarget.toLocaleString() : (r.vaultTarget || '');
       lines.push(`金庫 実査合計: ${r.vaultTotal || ''} 円 ／ 設定金額: ${target} 円 ／ 過不足: ${r.vaultDiff || ''} 円`);
+      // 金庫アプリの表記に合わせ、単位は付けずに値をそのまま出す（プラス＝過剰、マイナス＝不足）。
+      // Deltaは「今回新たに発生した分」で担当者の責任範囲にあたるため、累計と違うときだけ併記する
+      const withDelta = (value, delta) => {
+        const shown = (value === '' || value == null) ? '0' : value;
+        if (delta == null || String(delta) === String(parseAmount(shown))) return shown;
+        return `${shown}（今回分 ${delta}）`;
+      };
       [['reg1', '1レジ'], ['reg2', '2レジ']].forEach(([key, label]) => {
         const reg = r[key];
         if (!reg) return;
-        lines.push(`${label} 担当: ${reg.staff || '未設定'} ／ 現金過不足: ${reg.cashDiff || '0'} ／ 無料券: ${reg.freeCouponDiff || '0'}枚 ／ 割引券: ${reg.discCouponDiff || '0'}枚`);
+        lines.push(`${label} 担当: ${reg.staff || '未設定'}`
+          + ` ／ 現金過不足: ${withDelta(reg.cashDiff, reg.cashDiffDelta)}`
+          + ` ／ 無料券: ${withDelta(reg.freeCouponDiff, reg.freeCouponDiffDelta)}枚`
+          + ` ／ 割引券: ${withDelta(reg.discCouponDiff, reg.discCouponDiffDelta)}枚`);
       });
       if (r.memo) lines.push(`備考: ${r.memo}`);
       return lines.join('\n');
