@@ -3,14 +3,15 @@ const PORT = process.env.PORT || 8175;
 const fs = require('fs');
 const path = require('path');
 
-// 未入力のまま保存された記録（実査0円・設定20万・過不足-20万）を金庫アプリ側に用意する
-const UNCOUNTED = {
+// 数えた結果が0円だった記録（本当に空の金庫）。金庫アプリ側で「本当に空ですか？」の
+// 確認を通って保存されたもので、こちらは通常の記録として扱わなければならない
+const EMPTY_SAFE = {
   datetime: '2026-09-17T16:28', storeId: 'store-kiyokawa', storeName: '福岡清川二丁目店',
   reg1: { staff: '', cashDiff: '0', cashDiffDelta: 0, freeCouponDiff: '0', discCouponDiff: '0' },
   reg2: { staff: '', cashDiff: '0', cashDiffDelta: 34, freeCouponDiff: '0', discCouponDiff: '0' },
   vaultTotal: '0', vaultTarget: 200000, vaultDiff: '-200,000', memo: ''
 };
-const COUNTED = {
+const NORMAL = {
   datetime: '2026-09-17T17:10', storeId: 'store-kiyokawa', storeName: '福岡清川二丁目店',
   reg1: { staff: '佐藤', cashDiff: '0', cashDiffDelta: 0, freeCouponDiff: '0', discCouponDiff: '0' },
   reg2: { staff: '岡本', cashDiff: '-34', cashDiffDelta: 0, freeCouponDiff: '0', discCouponDiff: '0' },
@@ -91,40 +92,54 @@ async function returnFromKinko(page) {
 
   // ===== 1. 未入力の記録は自動取り込みしないこと =====
   const page = await boot(browser, sink);
-  await seedKinko(page, UNCOUNTED);
+  await seedKinko(page, EMPTY_SAFE);
   await postHandover(page);
   await returnFromKinko(page);
 
+  // ===== 1. 空の金庫(0円)でも、そのまま自動取り込みされること =====
+  // kinko-app側で「未入力のままでは保存できない」保証が入ったため、保存された0円は
+  // 「数えた結果が0円」を意味する。こちらで弾くと、本当に空の金庫を報告できなくなる
   const status = await page.locator('#handoverKinkoImportStatus').innerText();
-  console.log('uncounted record is NOT auto-imported (expect true):', status.includes('実査合計が0円'));
-  console.log('status explains what to do (expect true):', status.includes('入力して保存し直して'));
+  console.log('empty safe is auto-imported (expect true):', status.includes('取り込みました'));
+  console.log('no warning about counting (expect false):', status.includes('実査合計が0円'));
+  console.log('no dialog blocks the auto import (expect 0):', sink.dialogs.length);
+
   await page.click('button[onclick="closeHandoverWizard()"]');
   await page.waitForTimeout(500);
-  // 取り込みボタンが残っている = その引継ぎに kinkoRecord が入っていない
-  console.log('nothing was attached to the entry (expect 1 = button still there):',
+  console.log('attached to the entry (expect 0 = button gone):',
     await page.locator('#notebookList button:has-text("金庫の結果を取り込む")').count());
-  console.log('handover shows the un-imported warning (expect true):', await page.evaluate(() =>
+  console.log('no un-imported warning on the card (expect false):', await page.evaluate(() =>
     document.getElementById('latestHandoverKinko').classList.contains('kinko-block-missing')));
-  console.log('the false -200,000 is not in the handover (expect false):', (await page.locator('#latestHandoverKinko').innerText()).includes('-200,000'));
 
-  // ===== 2. 数え直した記録なら取り込めること（同じ導線で再開できる） =====
-  await seedKinko(page, COUNTED);
+  // 空の金庫は重大な事態。数字を握りつぶさず、そのまま引継ぎ書に出ること
+  const emptyText = await page.locator('#latestHandoverKinko').innerText();
+  console.log('the shortfall is shown, not swallowed (expect true):', emptyText.includes('-200,000'));
+  console.log('the target is shown too (expect true):', emptyText.includes('200,000'));
+
+  // ===== 2. 通常の記録も従来どおり取り込めること =====
+  await seedKinko(page, NORMAL);
   await page.evaluate(() => openView('notebook'));
   await page.waitForTimeout(300);
-  const btn = page.locator('#notebookList button:has-text("金庫の結果を取り込む")').first();
-  await btn.click();
+  await page.evaluate(() => {
+    window.firebase.firestore().collection('notebookEntries').add({
+      type: 'handover', store: '清川二丁目', author: 'テスト太郎', text: '・2件目の引継ぎ', answers: [],
+      createdAt: { toDate: () => new Date('2026-09-17T18:00:00+09:00') }
+    });
+  });
+  await page.waitForTimeout(600);
+  await page.locator('#notebookList button:has-text("金庫の結果を取り込む")').first().click();
   await page.waitForTimeout(1000);
   const latest = await page.locator('#latestHandoverKinko').innerText();
-  console.log('counted record imports fine (expect true):', latest.includes('200,000') && !latest.includes('-200,000'));
-  console.log('no confirm dialog for a counted record (expect 0):', sink.dialogs.filter(d => d.type === 'confirm').length);
+  console.log('normal record imports fine (expect true):', latest.includes('200,000') && !latest.includes('-200,000'));
+  console.log('still no confirm dialog anywhere (expect 0):', sink.dialogs.filter(d => d.type === 'confirm').length);
 
-  // ===== 3. 手動取り込みでは確認を挟み、キャンセルすれば入らないこと =====
-  const sink2 = { errors: [], dialogs: [], decide: d => d.dismiss() }; // キャンセルする
+  // ===== 3. 手動の取り込みでも空の金庫を弾かないこと =====
+  const sink2 = { errors: [], dialogs: [], decide: d => d.accept() };
   const page2 = await boot(browser, sink2);
-  await seedKinko(page2, UNCOUNTED);
+  await seedKinko(page2, EMPTY_SAFE);
   await page2.evaluate(() => {
     window.firebase.firestore().collection('notebookEntries').add({
-      type: 'handover', store: '清川二丁目', author: 'テスト太郎', text: '・取り込み前の引継ぎ', answers: [],
+      type: 'handover', store: '清川二丁目', author: 'テスト太郎', text: '・手動取り込み用', answers: [],
       createdAt: { toDate: () => new Date('2026-09-17T16:30:00+09:00') }
     });
   });
@@ -132,19 +147,9 @@ async function returnFromKinko(page) {
   await page2.click('.grid-card[onclick="openView(\'notebook\')"]');
   await page2.waitForTimeout(400);
   await page2.locator('#notebookList button:has-text("金庫の結果を取り込む")').first().click();
-  await page2.waitForTimeout(900);
-  const confirms = sink2.dialogs.filter(d => d.type === 'confirm');
-  console.log('manual import asks for confirmation (expect 1):', confirms.length);
-  console.log('confirmation names the real figures (expect true):',
-    confirms.length > 0 && confirms[0].message.includes('実査合計が0円') && confirms[0].message.includes('200,000'));
-  console.log('cancelling leaves the entry untouched (expect 1 = button still there):',
-    await page2.locator('#notebookList button:has-text("金庫の結果を取り込む")').count());
-
-  // ===== 4. 承認すれば取り込めること（本当に空の金庫のため） =====
-  sink2.decide = d => d.accept();
-  await page2.locator('#notebookList button:has-text("金庫の結果を取り込む")').first().click();
-  await page2.waitForTimeout(900);
-  console.log('accepting the confirm does import it (expect 0 = button gone):',
+  await page2.waitForTimeout(1000);
+  console.log('manual import needs no confirmation (expect 0):', sink2.dialogs.filter(d => d.type === 'confirm').length);
+  console.log('manual import of an empty safe succeeds (expect 0 = button gone):',
     await page2.locator('#notebookList button:has-text("金庫の結果を取り込む")').count());
 
   console.log('errors:', JSON.stringify(sink.errors.concat(sink2.errors)));
