@@ -252,6 +252,8 @@ Firebase Console→Authentication→ユーザーに、以下の綴りで登録�
 
 ## 🔐 金庫アプリとの連携
 
+> 経緯・一度作って外したものの理由は [`docs/kinko-integration-log.md`](docs/kinko-integration-log.md) に残しています。
+
 別のFirebaseプロジェクトで運用している「金庫アプリ」（金庫とレジの現金点検）の結果を、このアプリから**読み取り専用**で参照します。不具合報告アプリと同じく、複数アプリ初期化（`firebase.initializeApp(config, 'kinkoApp')`）で閲覧専用アカウントを使って直接読んでいます。書き込みは一切しません。
 
 これまでLINEやメールで共有していた点検結果を、引継ぎ書と同じ場所に置いて、いつでも見返せる・印刷できるようにすることが狙いです。
