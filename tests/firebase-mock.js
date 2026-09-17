@@ -58,6 +58,14 @@ function installFirebaseMock() {
       };
     }
 
+    // Timestamp（toDate()を持つ値）は時刻として比べる。
+    // 素のオブジェクト同士だと全部 "[object Object]" になって並び替えが効かない
+    function sortable(v) {
+      if (v && typeof v.toDate === 'function') return v.toDate().getTime();
+      if (v instanceof Date) return v.getTime();
+      return v;
+    }
+
     function makeColRef(colPath) {
       const state = { whereField: null, whereVal: null, orderField: null, orderDir: 'asc', limitN: null };
 
@@ -70,7 +78,7 @@ function installFirebaseMock() {
         if (state.orderField) {
           const f = state.orderField;
           docs.sort((a, b) => {
-            const av = a.data()[f], bv = b.data()[f];
+            const av = sortable(a.data()[f]), bv = sortable(b.data()[f]);
             if (av === bv) return 0;
             return (av > bv ? 1 : -1) * (state.orderDir === 'desc' ? -1 : 1);
           });
@@ -96,14 +104,10 @@ function installFirebaseMock() {
           return { id };
         },
         onSnapshot(cb) {
+          // get() と同じ経路を通す。orderBy を無視すると、アプリが
+          // 「最新の1件」として何を掴むかがテストと本番でずれる
           const fn = () => {
-            let docs = Object.keys(docStore)
-              .filter(k => k.startsWith(colPath + '/') && k.split('/').length === colPath.split('/').length + 1)
-              .map(k => {
-                const id = k.split('/').pop();
-                return { id, data: () => docStore[k] };
-              });
-            if (state.whereField) docs = docs.filter(d => d.data()[state.whereField] === state.whereVal);
+            const docs = collectDocs();
             cb({ docs, empty: docs.length === 0 });
           };
           docListeners[colPath] = docListeners[colPath] || [];
