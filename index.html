@@ -77,6 +77,23 @@
     .view-title { font-size: 1.1rem; font-weight: bold; flex: 1; }
     .view-topbar .settings-btn { flex-shrink: 0; }
 
+    /* ===== ヘルプ募集バナー (シフト管理アプリ連携) =====
+       全ビュー共通で最上部に出す。連携未設定・接続失敗・0件のときは何も出さない */
+    .help-banner { display: none; position: sticky; top: 6px; z-index: 40; width: 100%; margin-bottom: 12px; padding: 11px 14px; background: #d94b3a; color: white; border: none; border-radius: 10px; font-size: 0.92rem; font-weight: bold; text-align: left; box-shadow: 0 3px 8px rgba(0,0,0,0.18); }
+    .help-banner.visible { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .help-banner.done { background: #2e7d4f; }
+    .help-banner-chip { background: rgba(255,255,255,0.22); border-radius: 999px; padding: 2px 9px; font-size: 0.76rem; font-weight: bold; }
+    .help-banner-arrow { margin-left: auto; opacity: 0.85; font-weight: normal; }
+    .help-row { display: block; width: 100%; text-align: left; background: white; border: 1px solid #e1e4e8; border-radius: 10px; padding: 11px 12px; margin-bottom: 8px; color: #333; }
+    .help-row.filled { opacity: 0.55; }
+    .help-row-date { font-weight: bold; font-size: 0.95rem; }
+    .help-row-meta { font-size: 0.8rem; color: #666; margin-top: 3px; }
+    .help-tag { display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: 0.7rem; font-weight: bold; margin-left: 6px; vertical-align: middle; }
+    .help-tag.urgent { background: #ffe1dd; color: #c0392b; }
+    .help-tag.pending { background: #fff3cd; color: #8a6d3b; }
+    .help-tag.filled { background: #e3f4e6; color: #2e7d4f; }
+    .help-tag.mine { background: #e6efff; color: #2b5fa8; }
+
     [data-view] { display: none; }
     [data-view].active-view { display: block; }
 
@@ -288,6 +305,19 @@
     </div>
   </div>
 
+
+  <!-- ===== ヘルプ募集一覧 (シフト管理アプリ連携) ===== -->
+  <div id="helpListOverlay" class="sig-overlay" onclick="if(event.target===this) closeHelpList()">
+    <div class="sig-modal">
+      <h2 data-i18n="help.title">🆘 ヘルプ募集</h2>
+      <p style="font-size: 0.78rem; color: #666; margin-bottom: 12px;" data-i18n="help.lead">応募はシフト管理アプリで行います。行をタップすると、その募集が開きます。</p>
+      <div id="helpListBody"></div>
+      <button class="btn-clear" style="width: 100%; margin-top: 12px;" onclick="closeHelpList()">✕</button>
+    </div>
+  </div>
+
+  <!-- ===== ヘルプ募集バナー (全ビュー共通。ビューの外に置いて常に最上部に出す) ===== -->
+  <button id="helpBanner" class="help-banner" onclick="openHelpList()"></button>
 
   <!-- ===== ホーム: 機能一覧グリッド ===== -->
   <div data-view="home" class="active-view">
@@ -996,6 +1026,30 @@
     </details>
 
     <details>
+      <summary>🆘 シフト管理アプリ連携設定</summary>
+      <div style="margin-top: 10px;">
+        <p style="font-size: 0.8rem; color: #666;">シフト管理アプリのヘルプ募集を、全画面共通のヘッダーに表示します。読み取り専用で参照し、書き込みは一切しません。未設定のときはヘッダーに何も出ません。</p>
+        <label for="shiftAppUrlInput">シフト管理アプリのURL</label>
+        <input type="text" id="shiftAppUrlInput" placeholder="https://..." oninput="this.dataset.userEdited = '1'">
+        <button class="btn-secondary" onclick="saveShiftAppUrl()">💾 保存</button>
+        <div id="shiftAppUrlStatus" class="status"></div>
+
+        <p style="font-size: 0.8rem; color: #666; margin-top: 14px;">シフト管理アプリの担当者から受け取ったJSONを貼り付けてください（<code>firebaseConfig</code> に <code>viewerEmail</code> と <code>viewerPassword</code> を加えたもの）。</p>
+        <label for="shiftConfigInput">シフト管理アプリ連携設定 (JSON)</label>
+        <textarea id="shiftConfigInput" rows="6" placeholder='{"apiKey":"...","projectId":"shift-management-app-c6df2","viewerEmail":"...","viewerPassword":"..."}' oninput="this.dataset.userEdited = '1'"></textarea>
+        <button class="btn-secondary" onclick="saveShiftConfig()">💾 保存</button>
+        <div id="shiftConfigStatus" class="status"></div>
+
+        <p style="font-size: 0.8rem; color: #666; margin-top: 14px;">募集に付いている店舗の識別子が、このアプリの店舗名と違う場合に登録します。<code>シフト管理アプリの識別子 = このアプリの店舗名</code> の形で、1行に1件書いてください。届いている識別子は下に出ます。</p>
+        <label for="shiftStoreMapInput">シフト管理アプリの店舗の対応付け</label>
+        <textarea id="shiftStoreMapInput" rows="3" placeholder="fm71661 = 博多住吉通り&#10;fm82043 = 清川二丁目" oninput="this.dataset.userEdited = '1'"></textarea>
+        <button class="btn-secondary" onclick="saveShiftStoreMap()">💾 保存</button>
+        <div id="shiftStoreMapStatus" class="status"></div>
+        <div id="shiftUnknownStores" class="status"></div>
+      </div>
+    </details>
+
+    <details>
       <summary>🏦 金庫の現在の状況を確認</summary>
       <div style="margin-top: 10px;">
         <p style="font-size: 0.8rem; color: #666;">金庫アプリに登録されているすべての金庫（事務所金庫を含む）の、最新の点検結果をその場で読みます。表示するだけでこのアプリには保存しないため、古い値が残ったりスタッフに見えたりすることはありません。</p>
@@ -1174,8 +1228,8 @@
     }
 
     // ===== バージョン表示 (再読み込み後に最新版を掴めたか確認できるように) =====
-    const APP_VERSION = 'v1.11.1';
-    const APP_BUILD_TIME = '2026-09-17 22:10';
+    const APP_VERSION = 'v1.12.0';
+    const APP_BUILD_TIME = '2026-09-17 23:40';
     function updateVersionDisplay() {
       const el = document.getElementById('appVersionInfo');
       if (!el) return;
@@ -1362,7 +1416,18 @@
         'trouble.status.pending': 'Pending',
         'trouble.status.inprogress': 'In progress',
         'trouble.status.done': 'Done',
-        'common.loading': 'Loading...'
+        'common.loading': 'Loading...',
+        'help.title': '🆘 Help requests',
+        'help.lead': 'Apply in the shift app. Tap a row to open that request.',
+        'help.banner': 'Help wanted',
+        'help.pending': 'Awaiting approval',
+        'help.filled': 'Filled',
+        'help.allFilled': 'All help requests have been filled',
+        'help.urgent': 'Urgent',
+        'help.ownStore': 'Your store',
+        'help.empty': 'No open requests right now.',
+        'help.alreadyFilled': 'This request has already been filled.',
+        'help.noUrl': 'The shift app URL is not set. Ask the owner to register it in Owner settings.'
       },
       ne: {
         'home.title': '🏪 पसल सञ्चार',
@@ -1499,7 +1564,18 @@
         'trouble.status.pending': 'सम्बोधन नगरिएको',
         'trouble.status.inprogress': 'सम्बोधन गर्दै',
         'trouble.status.done': 'पूरा भयो',
-        'common.loading': 'लोड हुँदैछ...'
+        'common.loading': 'लोड हुँदैछ...',
+        'help.title': '🆘 सहयोग अनुरोध',
+        'help.lead': 'आवेदन शिफ्ट एपमा गर्नुहोस्। पङ्क्ति थिच्दा त्यो अनुरोध खुल्छ।',
+        'help.banner': 'सहयोग चाहियो',
+        'help.pending': 'स्वीकृति पर्खँदै',
+        'help.filled': 'भरियो',
+        'help.allFilled': 'सबै सहयोग अनुरोध भरिए',
+        'help.urgent': 'जरुरी',
+        'help.ownStore': 'आफ्नै पसल',
+        'help.empty': 'अहिले कुनै अनुरोध छैन।',
+        'help.alreadyFilled': 'यो अनुरोध पहिले नै भरिएको छ।',
+        'help.noUrl': 'शिफ्ट एपको URL सेट गरिएको छैन। मालिक सेटिङमा दर्ता गर्न भन्नुहोस्।'
       }
     };
 
@@ -1537,6 +1613,8 @@
       renderTrainingStepList();
       renderTrainingProgramName();
       renderTroubleReportList();
+      renderHelpBanner();
+      renderHelpList();
       updateHomeBadges();
       if (typeof renderHandoverStep === 'function' && document.getElementById('handoverWizard').style.display === 'block') {
         renderHandoverStep();
@@ -2076,6 +2154,28 @@
         if (kinkoMapInput && !kinkoMapInput.dataset.userEdited) {
           kinkoMapInput.value = Object.entries(kinkoStoreMap).map(([k, v]) => `${k} = ${v}`).join('\n');
         }
+
+        shiftAppUrl = (doc.exists && doc.data().shiftAppUrl) || '';
+        const shiftUrlInput = document.getElementById('shiftAppUrlInput');
+        if (shiftUrlInput && !shiftUrlInput.dataset.userEdited) shiftUrlInput.value = shiftAppUrl;
+
+        shiftStoreMap = (doc.exists && doc.data().shiftStoreMap) || {};
+        const shiftMapInput = document.getElementById('shiftStoreMapInput');
+        if (shiftMapInput && !shiftMapInput.dataset.userEdited) {
+          shiftMapInput.value = Object.entries(shiftStoreMap).map(([k, v]) => `${k} = ${v}`).join('\n');
+        }
+
+        shiftConfig = (doc.exists && doc.data().shiftConfig) || null;
+        const shiftConfigInput = document.getElementById('shiftConfigInput');
+        if (shiftConfig) {
+          if (shiftConfigInput && !shiftConfigInput.dataset.userEdited) {
+            shiftConfigInput.value = JSON.stringify(shiftConfig, null, 2);
+          }
+          initShiftHelp(shiftConfig);
+        }
+        renderHelpBanner();
+        renderHelpList();
+        renderShiftUnknownStores();
 
         const troubleReportConfig = doc.exists && doc.data().troubleReportConfig;
         const troubleReportConfigInput = document.getElementById('troubleReportConfigInput');
@@ -2776,6 +2876,56 @@
       statusEl.innerText = `✅ ${Object.keys(map).length}件の対応付けを保存しました`;
     }
 
+    function saveShiftAppUrl() {
+      if (!requireDb()) return;
+      const input = document.getElementById('shiftAppUrlInput');
+      const statusEl = document.getElementById('shiftAppUrlStatus');
+      const url = input.value.trim();
+      if (url && !/^https?:\/\//i.test(url)) {
+        statusEl.innerText = 'URLは http:// または https:// で始めてください';
+        return;
+      }
+      db.collection('appSettings').doc('general').set({ shiftAppUrl: url }, { merge: true });
+      delete input.dataset.userEdited;
+      statusEl.innerText = '✅ 保存しました';
+    }
+
+    function saveShiftConfig() {
+      if (!requireDb()) return;
+      const input = document.getElementById('shiftConfigInput');
+      const statusEl = document.getElementById('shiftConfigStatus');
+      const val = input.value.trim();
+      if (!val) return;
+      let parsed;
+      try { parsed = JSON.parse(val); } catch (e) { statusEl.innerText = 'JSON形式が不正です: ' + e.message; return; }
+      db.collection('appSettings').doc('general').set({ shiftConfig: parsed }, { merge: true });
+      delete input.dataset.userEdited;
+      statusEl.innerText = '✅ 保存しました';
+    }
+
+    function saveShiftStoreMap() {
+      if (!requireDb()) return;
+      const input = document.getElementById('shiftStoreMapInput');
+      const statusEl = document.getElementById('shiftStoreMapStatus');
+      const map = {};
+      const bad = [];
+      input.value.split('\n').map(s => s.trim()).filter(Boolean).forEach(line => {
+        const i = line.indexOf('=');
+        if (i < 0) { bad.push(line); return; }
+        const key = line.slice(0, i).trim();
+        const own = line.slice(i + 1).trim();
+        if (!key || !own) { bad.push(line); return; }
+        map[key] = own;
+      });
+      if (bad.length) {
+        statusEl.innerText = '「=」で区切れていない行があります: ' + bad.join(' / ');
+        return;
+      }
+      db.collection('appSettings').doc('general').set({ shiftStoreMap: map }, { merge: true });
+      delete input.dataset.userEdited;
+      statusEl.innerText = `✅ ${Object.keys(map).length}件の対応付けを保存しました`;
+    }
+
     function onHandoverAnswerTypeChange() {
       const isPresets = document.getElementById('handoverAnswerTypeInput').value === 'presets';
       document.getElementById('handoverPresetOptionsWrap').style.display = isPresets ? 'block' : 'none';
@@ -3219,6 +3369,221 @@
         storeTags: [activeStore], handoverEntryId: entryId,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
+    }
+
+    // ===== シフト管理アプリ連携 (ヘルプ募集を全画面共通のヘッダーに出す。読み取り専用) =====
+    // 先方の helpPostingsPublic は氏名を持たない。応募・採用の判定はすべてシフト管理アプリ側で行い、
+    // こちらは「いつ・どこで人手が足りないか」を出して該当の募集へ送るだけにする
+    let shiftConfig = null;
+    let shiftAppUrl = '';
+    let shiftStoreMap = {}; // シフト管理アプリ側の店舗識別子 → このアプリの店舗名
+    let shiftInitStarted = false;
+    let helpPostings = null;   // null は「まだ読めていない」。0件（本当に募集が無い）と必ず区別する
+    let helpPostingsError = '';
+    let renderedHelpRows = []; // 一覧の行 → 募集。IDを onclick に埋めるとエスケープ事故になるため添字で引く
+
+    // 確定済みの募集を出しておく時間。先方が消す前に一度 filled を経由する取り決め
+    const HELP_FILLED_VISIBLE_MS = 48 * 60 * 60 * 1000;
+    const HELP_WEEKDAYS = {
+      ja: ['日', '月', '火', '水', '木', '金', '土'],
+      en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+      ne: ['आइत', 'सोम', 'मङ्गल', 'बुध', 'बिहि', 'शुक्र', 'शनि']
+    };
+
+    // 募集に付いている店舗識別子を、人が読める名前にする。
+    // オーナーが登録した対応付け → 先方が付けた表示名 → 識別子そのもの、の順に使う
+    function shiftStoreLabel(posting) {
+      const key = String(posting.storeId || posting.storeKey || '').trim();
+      const mapped = shiftStoreMap && shiftStoreMap[key];
+      return mapped || String(posting.storeLabel || '').trim() || key || '（店舗不明）';
+    }
+
+    function buildShiftHelpUrl(id) {
+      const base = (shiftAppUrl || '').trim();
+      if (!base) return '';
+      if (!id) return base;
+      // 既存のハッシュは捨てる。#help= を重ねると先方が読めない
+      return base.split('#')[0] + '#help=' + encodeURIComponent(id);
+    }
+
+    function todayDateStr() {
+      const d = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    }
+
+    function formatHelpDate(dateStr) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || '').trim());
+      if (!m) return String(dateStr || '');
+      const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      if (isNaN(d.getTime())) return String(dateStr);
+      const week = HELP_WEEKDAYS[currentLang] || HELP_WEEKDAYS.ja;
+      return `${Number(m[2])}/${Number(m[3])}(${week[d.getDay()]})`;
+    }
+
+    // 時刻は先方がまだ持っていない可能性がある。無いものを勝手に補うと嘘になるので、
+    // 取れたものだけを出す（区分名だけのときは区分名だけ）
+    function formatHelpTime(posting) {
+      const start = String(posting.startTime || '').trim();
+      const end = String(posting.endTime || '').trim();
+      const range = (start && end) ? `${start}-${end}` : start;
+      const slot = String(posting.slotName || '').trim();
+      if (range && slot) return `${slot} ${range}`;
+      return range || slot || '';
+    }
+
+    function helpFilledAtMs(posting) {
+      const v = posting.filledAt;
+      if (!v) return NaN;
+      if (typeof v.toDate === 'function') return v.toDate().getTime();
+      const t = new Date(v).getTime();
+      return isNaN(t) ? NaN : t;
+    }
+
+    function visibleHelpPostings() {
+      if (!helpPostings) return [];
+      const today = todayDateStr();
+      const cutoff = Date.now() - HELP_FILLED_VISIBLE_MS;
+      return helpPostings
+        .filter(p => {
+          const date = String(p.dateStr || '').trim();
+          if (date && date < today) return false; // 過ぎた募集は出さない（先方の削除に頼らない）
+          if (p.status === 'filled') {
+            const at = helpFilledAtMs(p);
+            if (!isNaN(at) && at < cutoff) return false;
+          }
+          return true;
+        })
+        .sort((a, b) =>
+          String(a.dateStr || '').localeCompare(String(b.dateStr || '')) ||
+          String(a.startTime || '').localeCompare(String(b.startTime || '')));
+    }
+
+    function renderHelpBanner() {
+      const el = document.getElementById('helpBanner');
+      if (!el) return;
+      // 未設定・接続失敗・未読込のときは何も出さない。ここで「0件」と出すと、
+      // 「募集が無い」と「連携が壊れている」が同じ見た目になって区別できなくなる
+      if (!helpPostings || helpPostingsError) { el.classList.remove('visible'); return; }
+      const rows = visibleHelpPostings();
+      const open = rows.filter(p => p.status !== 'filled').length;
+      const pending = rows.filter(p => p.status === 'pending').length;
+      const filled = rows.filter(p => p.status === 'filled').length;
+      if (!open && !filled) { el.classList.remove('visible'); return; }
+      // 募集が無くなり、埋まったものだけが残っている状態。「0件」と赤で出すと意味が逆になる
+      if (!open) {
+        el.className = 'help-banner visible done';
+        el.innerHTML = `<span>✅ ${t('help.allFilled') || 'ヘルプ募集は埋まりました'}</span>`
+          + '<span class="help-banner-arrow">›</span>';
+        return;
+      }
+      el.className = 'help-banner visible';
+      const unit = currentLang === 'ja' ? '件' : '';
+      const parts = [`<span>🆘 ${t('help.banner') || 'ヘルプ募集'} ${open}${unit}</span>`];
+      // 承認待ちは責任者にしか意味が無い。スタッフに出しても操作できることが無い
+      if (isAdminUser && pending) {
+        parts.push(`<span class="help-banner-chip">⏳ ${t('help.pending') || '承認待ち'} ${pending}</span>`);
+      }
+      if (filled) {
+        parts.push(`<span class="help-banner-chip">✅ ${t('help.filled') || '埋まりました'} ${filled}</span>`);
+      }
+      parts.push('<span class="help-banner-arrow">›</span>');
+      el.innerHTML = parts.join('');
+    }
+
+    function renderHelpList() {
+      const body = document.getElementById('helpListBody');
+      if (!body) return;
+      renderedHelpRows = visibleHelpPostings();
+      if (!renderedHelpRows.length) {
+        body.innerHTML = `<div class="empty-state">${escapeHtml(t('help.empty') || '今は募集がありません')}</div>`;
+        return;
+      }
+      const own = (activeStore || '').trim();
+      body.innerHTML = renderedHelpRows.map((p, i) => {
+        const label = shiftStoreLabel(p);
+        const tags = [];
+        if (own && label === own) tags.push(`<span class="help-tag mine">📍 ${escapeHtml(t('help.ownStore') || '自店')}</span>`);
+        if (p.isUrgent) tags.push(`<span class="help-tag urgent">⚡ ${escapeHtml(t('help.urgent') || '急募')}</span>`);
+        if (p.status === 'pending') tags.push(`<span class="help-tag pending">⏳ ${escapeHtml(t('help.pending') || '承認待ち')}</span>`);
+        if (p.status === 'filled') tags.push(`<span class="help-tag filled">✅ ${escapeHtml(t('help.filled') || '埋まりました')}</span>`);
+        const time = formatHelpTime(p);
+        return `<button class="help-row${p.status === 'filled' ? ' filled' : ''}" onclick="openHelpPosting(${i})">`
+          + `<div class="help-row-date">${escapeHtml(formatHelpDate(p.dateStr))}${time ? ' ' + escapeHtml(time) : ''}${tags.join('')}</div>`
+          + `<div class="help-row-meta">${escapeHtml(label)}</div></button>`;
+      }).join('');
+    }
+
+    // 届いている店舗識別子のうち、対応付けも表示名も無いものをオーナー設定に出す。
+    // 「fm71661」のままスタッフに見せないための手掛かりにする
+    function renderShiftUnknownStores() {
+      const el = document.getElementById('shiftUnknownStores');
+      if (!el) return;
+      if (!helpPostings || !helpPostings.length) { el.innerText = ''; return; }
+      const keys = [...new Set(helpPostings.map(p => String(p.storeId || p.storeKey || '').trim()).filter(Boolean))];
+      const unnamed = keys.filter(k => {
+        if (shiftStoreMap && shiftStoreMap[k]) return false;
+        return !helpPostings.some(p => String(p.storeId || p.storeKey || '').trim() === k && String(p.storeLabel || '').trim());
+      });
+      el.innerText = unnamed.length
+        ? `名前が付いていない識別子があります: ${unnamed.join('、')}`
+        : `届いている識別子（${keys.join('、')}）はすべて名前が付いています`;
+    }
+
+    function openHelpList() {
+      renderHelpList();
+      document.getElementById('helpListOverlay').classList.add('open');
+    }
+
+    function closeHelpList() {
+      document.getElementById('helpListOverlay').classList.remove('open');
+    }
+
+    function openHelpPosting(index) {
+      const posting = renderedHelpRows[index];
+      if (!posting) return;
+      if (posting.status === 'filled') {
+        alert(t('help.alreadyFilled') || 'この募集はすでに埋まりました。');
+        return;
+      }
+      const url = buildShiftHelpUrl(posting.id);
+      if (!url) {
+        alert(t('help.noUrl') || 'シフト管理アプリのURLが未設定です。🔒オーナー設定から登録してください。');
+        return;
+      }
+      window.open(url, '_blank', 'noopener');
+    }
+
+    function initShiftHelp(config) {
+      if (shiftInitStarted) return;
+      if (!config || !config.apiKey || !config.viewerEmail || !config.viewerPassword) return;
+      shiftInitStarted = true;
+      const fail = message => {
+        // 読めなかったときは helpPostings を null に倒す。空配列にすると
+        // 「募集ゼロ」と同じ扱いになり、埋まってもいないのに黙って消える
+        helpPostingsError = message;
+        helpPostings = null;
+        renderHelpBanner();
+        renderHelpList();
+      };
+      try {
+        const app = firebase.apps.find(a => a.name === 'shiftApp')
+          || firebase.initializeApp(config, 'shiftApp');
+        app.auth().signInWithEmailAndPassword(config.viewerEmail, config.viewerPassword)
+          .then(() => {
+            app.firestore().collection('helpPostingsPublic').orderBy('dateStr').limit(200)
+              .onSnapshot(snap => {
+                helpPostingsError = '';
+                helpPostings = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                renderHelpBanner();
+                renderHelpList();
+                renderShiftUnknownStores();
+              }, err => fail(err.message));
+          })
+          .catch(err => fail(err.message));
+      } catch (e) {
+        fail(e.message);
+      }
     }
 
     // ===== 金庫アプリ連携 (別プロジェクトのFirestoreを読み取り専用で参照) =====
@@ -5433,6 +5798,7 @@
         inboxPanel.style.display = 'none';
         threadPanel.style.display = 'none';
         isAdminUser = false;
+        renderHelpBanner();
         activeDmStaffUid = null;
         detachDmListener();
         ensureDmInboxSubscription();
@@ -5443,6 +5809,7 @@
 
       authPanel.style.display = 'none';
       isAdminUser = adminEmailsList.includes((currentUser.email || '').toLowerCase());
+      renderHelpBanner(); // 「⏳ 承認待ち」は責任者にだけ出すため、判定が変わったら描き直す
       ensureDmInboxSubscription();
       ensureIncomingCallListener();
 
