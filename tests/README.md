@@ -38,7 +38,7 @@ NODE_PATH=/opt/node22/lib/node_modules node tests/pin-rate-limit-test.js
 | `kinko-integration-test.js` | 金庫アプリとの連携（引継ぎ書への取り込み・店舗名の対応付け・事務所金庫の確認） |
 | `i18n-test.js` | 英語・ネパール語への切り替え |
 | `trouble-reports-test.js` | 不具合報告アプリとの連携（別プロジェクトの読み取り専用購読） |
-| `reminders-pullrefresh-test.js` | 忘れ物の自動リマインド、期限超過の督促、引っ張って更新 |
+| `reminders-test.js` | 忘れ物の自動リマインド、期限超過の督促 |
 
 ## `stale/` について
 
