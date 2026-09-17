@@ -17,6 +17,12 @@ const TODAY = dayOffset(0);
 const IN_3_DAYS = dayOffset(3);
 const IN_5_DAYS = dayOffset(5);
 
+// シフト管理アプリ側の店舗識別子は店舗ごとに固定のUUID（PINとは無関係）
+const STORE_A = '3f2a9c1e-0000-4000-8000-000000000001';
+const STORE_B = '7b41d0aa-0000-4000-8000-000000000002';
+// オーナーが表示名を設定するまで先方が入れてくる文字列
+const LABEL_UNSET = '(表示名未設定)';
+
 const SHIFT_CONFIG = {
   apiKey: 'mock-shift-api-key',
   authDomain: 'shift-management-app-c6df2.firebaseapp.com',
@@ -96,13 +102,13 @@ async function bootStaffSession(browser, { shiftConfig }) {
     const sdb = window.firebase.app('shiftApp').firestore();
     rows.forEach(r => sdb.collection('helpPostingsPublic').doc(r.id).set(r.data));
   }, [
-    { id: 'fm71661__' + IN_3_DAYS + '_3', data: { storeId: 'fm71661', dateStr: IN_3_DAYS, slotName: '夕勤', startTime: '14:00', endTime: '22:00', isUrgent: false, status: 'open' } },
-    { id: 'fm82043__' + IN_5_DAYS + '_1', data: { storeId: 'fm82043', dateStr: IN_5_DAYS, slotName: '朝勤', startTime: '09:00', endTime: '17:00', isUrgent: false, status: 'open' } },
-    { id: 'fm71661__' + TODAY + '_2', data: { storeId: 'fm71661', dateStr: TODAY, slotName: '昼勤', startTime: '10:00', endTime: '18:00', isUrgent: true, status: 'pending' } },
-    // 日付が過ぎた募集。先方が消していなくてもこちらで出さない
-    { id: 'fm71661__' + YESTERDAY + '_1', data: { storeId: 'fm71661', dateStr: YESTERDAY, slotName: '夕勤', startTime: '14:00', endTime: '22:00', isUrgent: false, status: 'open' } },
+    { id: 'auto-a1', data: { storeKey: STORE_A, storeLabel: LABEL_UNSET, dateStr: IN_3_DAYS, slotName: '夕勤', startTime: '14:00', endTime: '22:00', isUrgent: false, status: 'open' } },
+    { id: 'auto-b1', data: { storeKey: STORE_B, storeLabel: LABEL_UNSET, dateStr: IN_5_DAYS, slotName: '朝勤', startTime: '09:00', endTime: '17:00', isUrgent: false, status: 'open' } },
+    { id: 'auto-a2', data: { storeKey: STORE_A, storeLabel: LABEL_UNSET, dateStr: TODAY, slotName: '昼勤', startTime: '10:00', endTime: '18:00', isUrgent: true, status: 'pending' } },
+    // 日付が過ぎた募集。先方は過去日を消さないため、こちらで出さない
+    { id: 'auto-a3', data: { storeKey: STORE_A, storeLabel: LABEL_UNSET, dateStr: YESTERDAY, slotName: '夕勤', startTime: '14:00', endTime: '22:00', isUrgent: false, status: 'open' } },
     // 確定したもの。消すのではなく filled を経由してもらう取り決め
-    { id: 'fm82043__' + IN_3_DAYS + '_4', data: { storeId: 'fm82043', dateStr: IN_3_DAYS, slotName: '夜勤', startTime: '17:00', endTime: '24:00', isUrgent: false, status: 'filled', filledAt: new Date().toISOString() } }
+    { id: 'auto-b2', data: { storeKey: STORE_B, storeLabel: LABEL_UNSET, dateStr: IN_3_DAYS, slotName: '夜勤', startTime: '17:00', endTime: '24:00', isUrgent: false, status: 'filled', filledAt: new Date().toISOString() } }
   ]);
   await page.waitForTimeout(350);
 
@@ -122,7 +128,11 @@ async function bootStaffSession(browser, { shiftConfig }) {
   const listText = (await page.locator('#helpListBody').innerText()).replace(/\n/g, ' | ');
   console.log('一覧の中身:', listText);
   console.log('過去日の募集は出さない (expect false):', listText.includes(YESTERDAY.slice(5).replace(/^0/, '').replace('-0', '/').replace('-', '/')));
-  console.log('対応付け前は識別子がそのまま出る (expect true):', listText.includes('fm71661'));
+  // 先方の「(表示名未設定)」を店舗名として出してはいけない。
+  // UUIDをそのまま出すのも意味が無いので、未設定であることが分かる形にする
+  console.log('(表示名未設定) を店舗名として出さない (expect false):', listText.includes('表示名未設定'));
+  console.log('店舗ごとのUUIDをスタッフに見せない (expect false):', listText.includes(STORE_A));
+  console.log('店舗名が未設定であることが分かる (expect true):', listText.includes('店舗名未設定'));
   console.log('時間帯を出す (expect true):', listText.includes('14:00-22:00'));
   console.log('急募を出す (expect true):', listText.includes('急募'));
 
@@ -156,9 +166,12 @@ async function bootStaffSession(browser, { shiftConfig }) {
   // ---------- 店舗の対応付け ----------
   await page.click('summary:has-text("🆘 シフト管理アプリ連携設定")');
   await page.waitForTimeout(150);
-  console.log('名前の無い識別子を知らせる (expect fm71661とfm82043を含む):',
-    await page.locator('#shiftUnknownStores').innerText());
-  await page.fill('#shiftStoreMapInput', 'fm71661 = 博多住吉通り\nfm82043 = 清川二丁目');
+  // 「(表示名未設定)」を名前として数えると、気づく手段ごと無くなる
+  const unknownText = await page.locator('#shiftUnknownStores').innerText();
+  console.log('未設定の合図を「名前あり」と数えない (expect true):',
+    unknownText.includes(STORE_A) && unknownText.includes(STORE_B));
+  console.log('オーナー設定の表示:', unknownText.replace(/\n/g, ' | '));
+  await page.fill('#shiftStoreMapInput', `${STORE_A} = 博多住吉通り\n${STORE_B} = 清川二丁目`);
   await page.click('button[onclick="saveShiftStoreMap()"]');
   await page.waitForTimeout(400);
   console.log('対応付けの保存 (expect "✅ 2件"):', await page.locator('#shiftStoreMapStatus').innerText());
@@ -173,7 +186,7 @@ async function bootStaffSession(browser, { shiftConfig }) {
   await page.waitForTimeout(250);
   const mapped = (await page.locator('#helpListBody').innerText()).replace(/\n/g, ' | ');
   console.log('対応付け後は店舗名で出る (expect true):',
-    mapped.includes('博多住吉通り') && mapped.includes('清川二丁目') && !mapped.includes('fm71661'));
+    mapped.includes('博多住吉通り') && mapped.includes('清川二丁目') && !mapped.includes(STORE_A));
   console.log('自店には印を付ける (expect true):', mapped.includes('自店'));
 
   // ---------- 書き込みは一切しない ----------
@@ -181,16 +194,66 @@ async function bootStaffSession(browser, { shiftConfig }) {
   const seeded = 5; // テスト自身が投入した5件
   console.log('シフト管理アプリへの書き込みはテストの投入分だけ (expect 5):', shiftWrites.length, '→', shiftWrites.length === seeded);
 
+  // ---------- filled なのに filledAt が無いとき ----------
+  // シフト管理アプリの削除は「その店舗がアプリを開いたとき」に走る。こちらが
+  // filledAt で切らないと「✅ 埋まりました」が出たまま戻らなくなる
+  await page.evaluate(() => { closeHelpList(); });
+  await page.evaluate(() => {
+    const sdb = window.firebase.app('shiftApp').firestore();
+    return sdb.collection('helpPostingsPublic').doc('auto-b2').update({ filledAt: null });
+  });
+  await page.waitForTimeout(300);
+  const noFilledAt = (await bannerText()).replace(/\n/g, ' ');
+  console.log('filledAt が無い filled は出さない (expect false):', noFilledAt.includes('埋まりました'), `「${noFilledAt}」`);
+
+  // 古い filledAt（48時間より前）も出さない
+  await page.evaluate(oldIso => {
+    const sdb = window.firebase.app('shiftApp').firestore();
+    return sdb.collection('helpPostingsPublic').doc('auto-b2').update({ filledAt: oldIso });
+  }, new Date(Date.now() - 72 * 3600000).toISOString());
+  await page.waitForTimeout(300);
+  console.log('48時間より古い filled は出さない (expect false):',
+    (await bannerText()).includes('埋まりました'));
+
+  // 直近の filledAt なら出す
+  await page.evaluate(nowIso => {
+    const sdb = window.firebase.app('shiftApp').firestore();
+    return sdb.collection('helpPostingsPublic').doc('auto-b2').update({ filledAt: nowIso });
+  }, new Date().toISOString());
+  await page.waitForTimeout(300);
+  console.log('直近に埋まったものは出す (expect true):', (await bannerText()).includes('埋まりました'));
+
+  // ---------- 取り下げ（filled を経由せず消える）を「埋まりました」と言わない ----------
+  // 休み希望が取り下げられた募集は、先方が filled を通さずいきなり削除する。
+  // こちらは差分を取っていないので、黙って一覧から消えるだけで通知は出ない
+  await page.evaluate(() => {
+    const sdb = window.firebase.app('shiftApp').firestore();
+    return sdb.collection('helpPostingsPublic').doc('auto-a2').delete();
+  });
+  await page.waitForTimeout(300);
+  const afterWithdraw = (await bannerText()).replace(/\n/g, ' ');
+  console.log('取り下げを「埋まりました」と言わない (expect 1):',
+    (afterWithdraw.match(/埋まりました/g) || []).length, `「${afterWithdraw}」`);
+  console.log('取り下げた分だけ募集件数が減る (expect true):', afterWithdraw.includes('2件'));
+
   // ---------- 募集が全部埋まったとき ----------
   await page.evaluate(() => { closeHelpList(); });
-  await page.evaluate(ids => {
+  await page.evaluate(async () => {
     const sdb = window.firebase.app('shiftApp').firestore();
-    ids.forEach(id => sdb.collection('helpPostingsPublic').doc(id).update({ status: 'filled', filledAt: new Date().toISOString() }));
-  }, ['fm71661__' + IN_3_DAYS + '_3', 'fm82043__' + IN_5_DAYS + '_1', 'fm71661__' + TODAY + '_2']);
-  await page.waitForTimeout(300);
+    const snap = await sdb.collection('helpPostingsPublic').get();
+    const now = new Date().toISOString();
+    for (const d of snap.docs) {
+      if (d.data().status !== 'filled') {
+        await sdb.collection('helpPostingsPublic').doc(d.id).update({ status: 'filled', filledAt: now });
+      }
+    }
+  });
+  await page.waitForTimeout(400);
   const doneText = (await bannerText()).replace(/\n/g, ' ');
-  console.log('全部埋まったら「0件」ではなく埋まった旨を出す (expect 埋まりました / 0件を含まない):',
-    doneText, '→', doneText.includes('埋まりました') && !doneText.includes('0件'));
+  console.log('全部埋まったら「N件」ではなく埋まった旨だけを出す (expect true):',
+    doneText.includes('埋まりました') && !/\d+件/.test(doneText), `「${doneText}」`);
+  console.log('その状態のバナーは赤ではない (expect true):',
+    await page.locator('#helpBanner').evaluate(el => el.classList.contains('done')));
 
   console.log('ページエラー (expect []):', JSON.stringify(errors));
   await page.close();

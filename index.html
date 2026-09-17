@@ -310,7 +310,7 @@
   <div id="helpListOverlay" class="sig-overlay" onclick="if(event.target===this) closeHelpList()">
     <div class="sig-modal">
       <h2 data-i18n="help.title">🆘 ヘルプ募集</h2>
-      <p style="font-size: 0.78rem; color: #666; margin-bottom: 12px;" data-i18n="help.lead">応募はシフト管理アプリで行います。行をタップすると、その募集が開きます。</p>
+      <p style="font-size: 0.78rem; color: #666; margin-bottom: 12px;" data-i18n="help.lead">応募はシフト管理アプリで行います。行をタップすると、その募集が開きます。スポットワーカー（日雇い）のアカウントでログインしている場合は、この導線では開けません。</p>
       <div id="helpListBody"></div>
       <button class="btn-clear" style="width: 100%; margin-top: 12px;" onclick="closeHelpList()">✕</button>
     </div>
@@ -1040,9 +1040,9 @@
         <button class="btn-secondary" onclick="saveShiftConfig()">💾 保存</button>
         <div id="shiftConfigStatus" class="status"></div>
 
-        <p style="font-size: 0.8rem; color: #666; margin-top: 14px;">募集に付いている店舗の識別子が、このアプリの店舗名と違う場合に登録します。<code>シフト管理アプリの識別子 = このアプリの店舗名</code> の形で、1行に1件書いてください。届いている識別子は下に出ます。</p>
-        <label for="shiftStoreMapInput">シフト管理アプリの店舗の対応付け</label>
-        <textarea id="shiftStoreMapInput" rows="3" placeholder="fm71661 = 博多住吉通り&#10;fm82043 = 清川二丁目" oninput="this.dataset.userEdited = '1'"></textarea>
+        <p style="font-size: 0.8rem; color: #666; margin-top: 14px;"><strong>通常は登録不要です。</strong> シフト管理アプリ側で各店舗の表示名（「①シフト枠設定」→「🏷️ 表示名を設定」）が入っていれば、その名前をそのまま使います。表示名が未設定の店舗があるときだけ、ここで補ってください。<code>シフト管理アプリの識別子 = このアプリの店舗名</code> の形で、1行に1件です。識別子は店舗ごとのUUIDで、PINとは無関係です。下に、届いているのに店舗名が分からない識別子が出ます。</p>
+        <label for="shiftStoreMapInput">シフト管理アプリの店舗の対応付け（表示名が未設定のときだけ）</label>
+        <textarea id="shiftStoreMapInput" rows="3" placeholder="3f2a9c1e-... = 博多住吉通り&#10;7b41d0aa-... = 清川二丁目" oninput="this.dataset.userEdited = '1'"></textarea>
         <button class="btn-secondary" onclick="saveShiftStoreMap()">💾 保存</button>
         <div id="shiftStoreMapStatus" class="status"></div>
         <div id="shiftUnknownStores" class="status"></div>
@@ -1418,7 +1418,8 @@
         'trouble.status.done': 'Done',
         'common.loading': 'Loading...',
         'help.title': '🆘 Help requests',
-        'help.lead': 'Apply in the shift app. Tap a row to open that request.',
+        'help.lead': 'Apply in the shift app. Tap a row to open that request. This link does not work if you are signed in as a spot worker.',
+        'help.storeUnnamed': '⚠️ Store name not set',
         'help.banner': 'Help wanted',
         'help.pending': 'Awaiting approval',
         'help.filled': 'Filled',
@@ -1566,7 +1567,8 @@
         'trouble.status.done': 'पूरा भयो',
         'common.loading': 'लोड हुँदैछ...',
         'help.title': '🆘 सहयोग अनुरोध',
-        'help.lead': 'आवेदन शिफ्ट एपमा गर्नुहोस्। पङ्क्ति थिच्दा त्यो अनुरोध खुल्छ।',
+        'help.lead': 'आवेदन शिफ्ट एपमा गर्नुहोस्। पङ्क्ति थिच्दा त्यो अनुरोध खुल्छ। स्पट वर्कर खातामा लगइन भएको खण्डमा यो लिंक चल्दैन।',
+        'help.storeUnnamed': '⚠️ पसलको नाम सेट छैन',
         'help.banner': 'सहयोग चाहियो',
         'help.pending': 'स्वीकृति पर्खँदै',
         'help.filled': 'भरियो',
@@ -3390,12 +3392,29 @@
       ne: ['आइत', 'सोम', 'मङ्गल', 'बुध', 'बिहि', 'शुक्र', 'शनि']
     };
 
+    // シフト管理アプリ側は、オーナーが表示名を設定するまで storeLabel に
+    // この文字列を入れてくる（内部の識別子を漏らさないための仕様）。
+    // 店舗名ではないので、名前が付いているものとして扱ってはいけない
+    const SHIFT_LABEL_UNSET = '(表示名未設定)';
+
+    function shiftStoreKeyOf(posting) {
+      return String(posting.storeKey || posting.storeId || '').trim();
+    }
+
+    // 先方が付けた表示名。未設定の合図が来たときは「無い」として扱う
+    function shiftGivenLabel(posting) {
+      const label = String(posting.storeLabel || '').trim();
+      if (!label || label === SHIFT_LABEL_UNSET) return '';
+      return label;
+    }
+
     // 募集に付いている店舗識別子を、人が読める名前にする。
-    // オーナーが登録した対応付け → 先方が付けた表示名 → 識別子そのもの、の順に使う
+    // オーナーが登録した対応付け → 先方が付けた表示名 → 「店舗名未設定」の順に使う。
+    // 識別子そのもの（店舗ごとのUUID）は人に見せても意味が無いので出さない
     function shiftStoreLabel(posting) {
-      const key = String(posting.storeId || posting.storeKey || '').trim();
-      const mapped = shiftStoreMap && shiftStoreMap[key];
-      return mapped || String(posting.storeLabel || '').trim() || key || '（店舗不明）';
+      const mapped = shiftStoreMap && shiftStoreMap[shiftStoreKeyOf(posting)];
+      return mapped || shiftGivenLabel(posting)
+        || (t('help.storeUnnamed') || '⚠️ 店舗名未設定');
     }
 
     function buildShiftHelpUrl(id) {
@@ -3450,7 +3469,11 @@
           if (date && date < today) return false; // 過ぎた募集は出さない（先方の削除に頼らない）
           if (p.status === 'filled') {
             const at = helpFilledAtMs(p);
-            if (!isNaN(at) && at < cutoff) return false;
+            // filledAt が無いと、いつ埋まったのか分からない。シフト管理アプリの削除は
+            // 「その店舗がアプリを開いたとき」に走るため、こちらが消さないと
+            // 「✅ 埋まりました」が出たまま戻らなくなる。分からないものは出さない
+            if (isNaN(at)) return false;
+            if (at < cutoff) return false;
           }
           return true;
         })
@@ -3520,14 +3543,17 @@
       const el = document.getElementById('shiftUnknownStores');
       if (!el) return;
       if (!helpPostings || !helpPostings.length) { el.innerText = ''; return; }
-      const keys = [...new Set(helpPostings.map(p => String(p.storeId || p.storeKey || '').trim()).filter(Boolean))];
+      const keys = [...new Set(helpPostings.map(shiftStoreKeyOf).filter(Boolean))];
+      // 先方の「(表示名未設定)」を名前として数えないこと。数えてしまうと
+      // 「すべて名前が付いています」と出て、気づく手段ごと無くなる
       const unnamed = keys.filter(k => {
         if (shiftStoreMap && shiftStoreMap[k]) return false;
-        return !helpPostings.some(p => String(p.storeId || p.storeKey || '').trim() === k && String(p.storeLabel || '').trim());
+        return !helpPostings.some(p => shiftStoreKeyOf(p) === k && shiftGivenLabel(p));
       });
       el.innerText = unnamed.length
-        ? `名前が付いていない識別子があります: ${unnamed.join('、')}`
-        : `届いている識別子（${keys.join('、')}）はすべて名前が付いています`;
+        ? `店舗名が分からない識別子があります: ${unnamed.join('、')}\n`
+          + 'シフト管理アプリ側で表示名が設定されていないか、対応付けが未登録です。'
+        : `届いている識別子（${keys.join('、')}）はすべて店舗名が分かります`;
     }
 
     function openHelpList() {
