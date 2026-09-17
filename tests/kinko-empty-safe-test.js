@@ -5,14 +5,20 @@ const path = require('path');
 
 // 数えた結果が0円だった記録（本当に空の金庫）。金庫アプリ側で「本当に空ですか？」の
 // 確認を通って保存されたもので、こちらは通常の記録として扱わなければならない
+function localDatetime(offsetMs) {
+  const d = new Date(Date.now() + offsetMs);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 const EMPTY_SAFE = {
-  datetime: '2026-09-17T16:28', storeId: 'store-kiyokawa', storeName: '福岡清川二丁目店',
+  datetime: localDatetime(10 * 60 * 1000), storeId: 'store-kiyokawa', storeName: '福岡清川二丁目店',
   reg1: { staff: '', cashDiff: '0', cashDiffDelta: 0, freeCouponDiff: '0', discCouponDiff: '0' },
   reg2: { staff: '', cashDiff: '0', cashDiffDelta: 34, freeCouponDiff: '0', discCouponDiff: '0' },
   vaultTotal: '0', vaultTarget: 200000, vaultDiff: '-200,000', memo: ''
 };
 const NORMAL = {
-  datetime: '2026-09-17T17:10', storeId: 'store-kiyokawa', storeName: '福岡清川二丁目店',
+  datetime: localDatetime(20 * 60 * 1000), storeId: 'store-kiyokawa', storeName: '福岡清川二丁目店',
   reg1: { staff: '佐藤', cashDiff: '0', cashDiffDelta: 0, freeCouponDiff: '0', discCouponDiff: '0' },
   reg2: { staff: '岡本', cashDiff: '-34', cashDiffDelta: 0, freeCouponDiff: '0', discCouponDiff: '0' },
   vaultTotal: '200,000', vaultTarget: 200000, vaultDiff: '0', memo: '実査済み'
@@ -123,7 +129,8 @@ async function returnFromKinko(page) {
   await page.evaluate(() => {
     window.firebase.firestore().collection('notebookEntries').add({
       type: 'handover', store: '清川二丁目', author: 'テスト太郎', text: '・2件目の引継ぎ', answers: [],
-      createdAt: { toDate: () => new Date('2026-09-17T18:00:00+09:00') }
+      // 実行時刻より確実に後。固定時刻だと実行した時間帯次第で最新が入れ替わる
+      createdAt: { toDate: () => new Date(Date.now() + 5 * 60 * 1000) }
     });
   });
   await page.waitForTimeout(600);
@@ -140,7 +147,7 @@ async function returnFromKinko(page) {
   await page2.evaluate(() => {
     window.firebase.firestore().collection('notebookEntries').add({
       type: 'handover', store: '清川二丁目', author: 'テスト太郎', text: '・手動取り込み用', answers: [],
-      createdAt: { toDate: () => new Date('2026-09-17T16:30:00+09:00') }
+      createdAt: { toDate: () => new Date(Date.now() + 5 * 60 * 1000) }
     });
   });
   await page2.waitForTimeout(500);

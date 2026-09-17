@@ -120,6 +120,9 @@
     /* ===== 連絡ノート: 引継ぎウィザード ===== */
     .handover-prev-answer { font-size: 0.78rem; color: #777; background: #f4f6f8; border-left: 3px solid #dde2eb; border-radius: 0 6px 6px 0; padding: 7px 10px; margin-bottom: 12px; line-height: 1.5; }
     .handover-prev-answer .handover-prev-detail { color: #555; }
+    .kinko-open-note { background: #fff8e1; border: 1px solid #f0ad4e; border-radius: 6px; padding: 10px 12px; margin: 10px 0; font-size: 0.85rem; color: #7a5b00; text-align: left; line-height: 1.6; }
+    .kinko-open-note strong { color: #a05a00; }
+    .kinko-open-back { font-size: 0.8rem; color: #666; margin: 10px 0 0; line-height: 1.6; text-align: left; }
     .store-pin-map { margin: 8px 0 10px; font-size: 0.8rem; }
     .store-pin-map-row { display: flex; align-items: baseline; gap: 6px; padding: 3px 0; border-bottom: 1px dashed #e3e6ea; }
     .store-pin-map-row:last-child { border-bottom: none; }
@@ -441,7 +444,9 @@
       <div class="card" id="handoverDoneCard" style="display: none; margin-top: 14px; text-align: center;">
         <h2 data-i18n="notebook.wizard.done.title">✅ 引継ぎを投稿しました</h2>
         <p style="font-size: 0.85rem; color: #666;" data-i18n="notebook.wizard.done.kinko">最後に金庫の確認をすると引継ぎ完了です。</p>
+        <div id="handoverKinkoStoreNote" class="kinko-open-note" style="display: none;"></div>
         <a id="handoverKinkoLink" class="btn-primary handover-kinko-link" href="#" target="_blank" rel="noopener" onclick="markAwaitingKinkoReturn()" data-i18n="notebook.wizard.done.openKinko">🔐 金庫アプリを開く</a>
+        <p class="kinko-open-back" data-i18n="notebook.wizard.done.howToReturn">点検が終わったら、画面の左上にある「✕」を押すとこの画面に戻ります。戻ると自動で引継ぎ書に取り込まれます。</p>
         <div id="handoverKinkoImportStatus" class="status"></div>
         <button class="btn-clear" style="width: 100%; margin-top: 10px;" onclick="closeHandoverWizard()" data-i18n="notebook.wizard.done.close">閉じる</button>
       </div>
@@ -1169,8 +1174,8 @@
     }
 
     // ===== バージョン表示 (再読み込み後に最新版を掴めたか確認できるように) =====
-    const APP_VERSION = 'v1.9.0';
-    const APP_BUILD_TIME = '2026-09-17 19:30';
+    const APP_VERSION = 'v1.10.0';
+    const APP_BUILD_TIME = '2026-09-17 20:20';
     function updateVersionDisplay() {
       const el = document.getElementById('appVersionInfo');
       if (!el) return;
@@ -1272,6 +1277,8 @@
         'notebook.wizard.done.kinko': 'Finish by checking the safe.',
         'notebook.wizard.done.openKinko': '🔐 Open the safe app',
         'notebook.wizard.done.close': 'Close',
+        'notebook.wizard.done.checkStore': 'Check that <strong>{store}</strong> is selected in the safe app. If another store is still selected, the count will be saved to that store instead.',
+        'notebook.wizard.done.howToReturn': 'When the count is done, tap the ✕ at the top left to come back here. The result is imported into the handover automatically.',
         'notebook.kinko.title': 'Safe / register cash check',
         'notebook.kinko.attach': 'Import safe result',
         'notebook.kinko.print': 'Print',
@@ -1407,6 +1414,8 @@
         'notebook.wizard.done.kinko': 'अन्त्यमा तिजोरी जाँच गर्नुहोस्।',
         'notebook.wizard.done.openKinko': '🔐 तिजोरी एप खोल्नुहोस्',
         'notebook.wizard.done.close': 'बन्द गर्नुहोस्',
+        'notebook.wizard.done.checkStore': 'तिजोरी एपमा <strong>{store}</strong> छानिएको छ कि छैन जाँच्नुहोस्। अर्को पसल छानिएको भए, गणना त्यहीँ सुरक्षित हुन्छ।',
+        'notebook.wizard.done.howToReturn': 'गणना सकिएपछि माथि बायाँको ✕ थिचेर यहाँ फर्कनुहोस्। नतिजा स्वतः ह्यान्डओभरमा जान्छ।',
         'notebook.kinko.title': 'तिजोरी / क्यास जाँच',
         'notebook.kinko.attach': 'तिजोरीको नतिजा ल्याउनुहोस्',
         'notebook.kinko.print': 'प्रिन्ट',
@@ -3183,6 +3192,20 @@
       // 自動で開かずタップさせるのは、投稿の通信を挟むとブラウザが
       // ユーザー操作とみなさず、ポップアップとして遮断されるため
       document.getElementById('handoverKinkoLink').href = kinkoAppUrl;
+
+      // 金庫アプリは自分が最後に開いた店舗を覚えているため、別店舗のまま
+      // 保存される事故が起きる。開く前に、選ぶべき店舗名を出しておく。
+      // 金庫アプリ側で店舗を受け取れるようになったら、この注意書きは不要になる
+      const noteEl = document.getElementById('handoverKinkoStoreNote');
+      const target = kinkoStoreNameFor(activeStore);
+      if (noteEl && target) {
+        const tmpl = t('notebook.wizard.done.checkStore')
+          || '金庫アプリで <strong>{store}</strong> が選ばれているか確認してください。別の店舗のままだと、そちらに保存されてしまいます。';
+        noteEl.innerHTML = '\u26A0\uFE0F ' + tmpl.replace('{store}', escapeHtml(target));
+        noteEl.style.display = 'block';
+      } else if (noteEl) {
+        noteEl.style.display = 'none';
+      }
     }
 
     function postImportantHandoverItemsToBulletin(answers, entryId) {
@@ -3201,6 +3224,12 @@
     let kinkoStoreMap = {}; // このアプリの店舗名 → 金庫アプリ側の店舗名
     let kinkoDb = null;
     let kinkoAuthPromise = null;
+
+    // このアプリの店舗名 → 金庫アプリ側の店舗名。対応付けが無ければそのまま使う
+    function kinkoStoreNameFor(storeName) {
+      const own = (storeName || '').trim();
+      return ((kinkoStoreMap && kinkoStoreMap[own]) || own).trim();
+    }
 
     async function getKinkoDb() {
       if (kinkoDb) return kinkoDb;
@@ -3237,7 +3266,7 @@
       const stores = await fetchKinkoStores(kdb);
       // 両アプリで店舗名の付け方が違うため、オーナー設定の対応付けを通してから照合する
       const own = (storeName || '').trim();
-      const target = ((kinkoStoreMap && kinkoStoreMap[own]) || own).trim();
+      const target = kinkoStoreNameFor(own);
       const match = stores.find(s => (s.name || '').trim() === target);
       if (!match) {
         const available = stores.map(s => s.name).filter(Boolean).join('、');

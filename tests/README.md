@@ -41,6 +41,7 @@ NODE_PATH=/opt/node22/lib/node_modules node tests/pin-rate-limit-test.js
 | `store-pin-map-test.js` | 店舗一覧と店舗別PINの対応表示、並べ替えへの追従、6行目以降の警告 |
 | `kinko-empty-safe-test.js` | 実査0円（本当に空の金庫）の記録を弾かずに取り込むこと、不足額を握りつぶさないこと |
 | `kinko-stale-record-test.js` | 点検より古い記録を取り込まないこと（金庫アプリ側の店舗取り違えの検出）、点検店舗の表示 |
+| `kinko-open-guidance-test.js` | 金庫アプリを開く前の店舗名の注意書きと、戻り方の案内（多言語含む） |
 | `i18n-test.js` | 英語・ネパール語への切り替え |
 | `trouble-reports-test.js` | 不具合報告アプリとの連携（別プロジェクトの読み取り専用購読） |
 | `reminders-test.js` | 忘れ物の自動リマインド、期限超過の督促 |
@@ -59,3 +60,4 @@ NODE_PATH=/opt/node22/lib/node_modules node tests/pin-rate-limit-test.js
 - 店舗が2つ以上登録されていると、起動時に店舗選択モーダルが開いてクリックを遮ります。先に `.store-option-btn` で店舗を選んでください
 - `<details>` が閉じていると `innerText` が空になります。先に `summary` をクリックするか、`evaluate(el => el.textContent)` を使ってください
 - モックの `onSnapshot` は同期的に発火します。購読を解除する変数を、同じ式の中で参照しないでください
+- **日時を固定文字列で書かないでください。** 引継ぎの `createdAt` も金庫記録の `datetime` も、`Date.now()` からの相対で作ってください。固定時刻にすると、実行した時間帯やタイムゾーン次第で「最新の引継ぎ」が入れ替わったり、点検記録が未来扱いになったりして、判定がすり抜けます（実際に2回踏みました）
