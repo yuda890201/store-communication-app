@@ -38,6 +38,7 @@ NODE_PATH=/opt/node22/lib/node_modules node tests/pin-rate-limit-test.js
 | `kinko-integration-test.js` | 金庫アプリとの連携（引継ぎ書への取り込み・店舗名の対応付け・事務所金庫の確認） |
 | `kinko-auto-import-test.js` | 金庫アプリから戻ったときの自動取り込みと、未取り込みの警告表示 |
 | `setup-qr-test.js` | スタッフ用セットアップQRの生成・新端末での取り込み・壊れたQR・既存設定の上書き確認 |
+| `store-pin-map-test.js` | 店舗一覧と店舗別PINの対応表示、並べ替えへの追従、6行目以降の警告 |
 | `i18n-test.js` | 英語・ネパール語への切り替え |
 | `trouble-reports-test.js` | 不具合報告アプリとの連携（別プロジェクトの読み取り専用購読） |
 | `reminders-test.js` | 忘れ物の自動リマインド、期限超過の督促 |
