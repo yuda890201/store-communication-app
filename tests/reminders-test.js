@@ -107,37 +107,6 @@ const PORT = process.env.PORT || 8175;
   await page.waitForTimeout(300);
   console.log('notebookEntries count after re-check post-escalation (should be unchanged, 3):', (await readNotebookTexts()).length);
 
-  // ===== pull-to-refresh test =====
-  const indicatorInitialMarginTop = await page.evaluate(() => getComputedStyle(document.getElementById('pullRefreshIndicator')).marginTop);
-  console.log('pull indicator initial margin-top (should be -56px):', indicatorInitialMarginTop);
-
-  const touchSupported = await page.evaluate(() => {
-    try {
-      const t = new Touch({ identifier: 1, target: document.body, clientX: 50, clientY: 10 });
-      return !!t;
-    } catch (e) { return 'error: ' + e.message; }
-  });
-  console.log('Touch constructor supported:', touchSupported);
-
-  if (touchSupported === true) {
-    const urlBefore = page.url();
-    await page.evaluate(() => {
-      function makeTouch(y, target) {
-        return new Touch({ identifier: 42, target, clientX: 100, clientY: y, pageX: 100, pageY: y });
-      }
-      const target = document.body;
-      let t = makeTouch(50, target);
-      target.dispatchEvent(new TouchEvent('touchstart', { touches: [t], targetTouches: [t], changedTouches: [t], bubbles: true, cancelable: true }));
-      t = makeTouch(200, target);
-      target.dispatchEvent(new TouchEvent('touchmove', { touches: [t], targetTouches: [t], changedTouches: [t], bubbles: true, cancelable: true }));
-      target.dispatchEvent(new TouchEvent('touchend', { touches: [], targetTouches: [], changedTouches: [t], bubbles: true, cancelable: true }));
-    });
-    await page.waitForTimeout(600);
-    const urlAfter = page.url();
-    console.log('url before pull:', urlBefore);
-    console.log('url after pull (should contain _r= if refresh triggered):', urlAfter);
-  }
-
   console.log('errors:', JSON.stringify(errors));
   await browser.close();
 })();

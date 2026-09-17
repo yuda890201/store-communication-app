@@ -233,24 +233,6 @@
     .call-ctrl-btn.call-hangup { background: #dc3545; }
     .incoming-call-name { font-size: 1.05rem; font-weight: bold; margin: 6px 0 14px; }
 
-    /* ===== プルリフレッシュ (どのページからでも実行可能) ===== */
-    #pullRefreshIndicator {
-      position: fixed; top: 0; left: 50%; width: 100%; max-width: 600px; z-index: 100;
-      display: flex; align-items: center; justify-content: center; gap: 8px;
-      height: 56px; margin-top: -56px; transform: translateX(-50%);
-      background: #f4f6f8; color: #555; font-size: 0.85rem; font-weight: bold;
-      transition: none; pointer-events: none;
-    }
-    #pullRefreshIndicator.animating { transition: margin-top 0.2s ease; }
-    #pullRefreshIndicator .pr-spinner {
-      width: 18px; height: 18px; border-radius: 50%; border: 3px solid #ccc; border-top-color: #007bff;
-      display: none;
-    }
-    #pullRefreshIndicator.refreshing .pr-spinner { display: block; animation: pr-spin 0.7s linear infinite; }
-    #pullRefreshIndicator.refreshing .pr-arrow { display: none; }
-    .pr-arrow { transition: transform 0.2s ease; font-size: 1.1rem; }
-    .pr-arrow.flip { transform: rotate(180deg); }
-    @keyframes pr-spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -292,12 +274,6 @@
     </div>
   </div>
 
-  <!-- ===== プルリフレッシュ インジケーター (どのページからでも引っ張って更新できる) ===== -->
-  <div id="pullRefreshIndicator">
-    <span class="pr-spinner"></span>
-    <span class="pr-arrow">↓</span>
-    <span id="pullRefreshLabel">引っ張って更新</span>
-  </div>
 
   <!-- ===== ホーム: 機能一覧グリッド ===== -->
   <div data-view="home" class="active-view">
@@ -1166,9 +1142,9 @@
       if (view === 'home') updateHomeBadges();
     }
 
-    // ===== バージョン表示 (プルリフレッシュ後に最新版か確認できるように) =====
-    const APP_VERSION = 'v1.3.0';
-    const APP_BUILD_TIME = '2026-09-17 11:10';
+    // ===== バージョン表示 (再読み込み後に最新版を掴めたか確認できるように) =====
+    const APP_VERSION = 'v1.4.0';
+    const APP_BUILD_TIME = '2026-09-17 13:30';
     function updateVersionDisplay() {
       const el = document.getElementById('appVersionInfo');
       if (!el) return;
@@ -5592,74 +5568,6 @@
       if (callback) callback(dataUrl);
     }
 
-    // ===== プルリフレッシュ (どの画面からでも上端を引っ張ると再読み込み) =====
-    (function setupPullToRefresh() {
-      const THRESHOLD = 70;
-      const MAX_PULL = 110;
-      let startY = 0;
-      let pulling = false;
-      let refreshing = false;
-      const indicator = document.getElementById('pullRefreshIndicator');
-      const label = document.getElementById('pullRefreshLabel');
-      const arrow = indicator.querySelector('.pr-arrow');
-
-      function isBlockedTarget(target) {
-        return !!target.closest('textarea, input, select, canvas, .sig-overlay.open, .call-overlay-full, .side-drawer.open');
-      }
-
-      function onTouchStart(e) {
-        if (refreshing) return;
-        if (window.scrollY > 0) return;
-        if (isBlockedTarget(e.target)) return;
-        if (e.touches.length !== 1) return;
-        startY = e.touches[0].clientY;
-        pulling = true;
-        indicator.classList.remove('animating');
-      }
-
-      function onTouchMove(e) {
-        if (!pulling || refreshing) return;
-        const delta = e.touches[0].clientY - startY;
-        if (delta <= 0) { pulling = false; indicator.style.marginTop = '-56px'; return; }
-        if (window.scrollY > 0) { pulling = false; return; }
-        e.preventDefault();
-        const pull = Math.min(delta, MAX_PULL);
-        indicator.style.marginTop = (pull - 56) + 'px';
-        if (pull >= THRESHOLD) {
-          label.innerText = '離して更新';
-          arrow.classList.add('flip');
-        } else {
-          label.innerText = '引っ張って更新';
-          arrow.classList.remove('flip');
-        }
-      }
-
-      function onTouchEnd() {
-        if (!pulling || refreshing) { pulling = false; return; }
-        pulling = false;
-        indicator.classList.add('animating');
-        const pulledEnough = indicator.style.marginTop && (parseFloat(indicator.style.marginTop) + 56) >= THRESHOLD;
-        if (pulledEnough) {
-          refreshing = true;
-          indicator.classList.add('refreshing');
-          indicator.style.marginTop = '0px';
-          label.innerText = '更新中...';
-          setTimeout(() => {
-            const url = new URL(window.location.href);
-            url.searchParams.set('_r', Date.now());
-            window.location.href = url.toString();
-          }, 250);
-        } else {
-          indicator.style.marginTop = '-56px';
-          arrow.classList.remove('flip');
-        }
-      }
-
-      document.addEventListener('touchstart', onTouchStart, { passive: true });
-      document.addEventListener('touchmove', onTouchMove, { passive: false });
-      document.addEventListener('touchend', onTouchEnd, { passive: true });
-      document.addEventListener('touchcancel', onTouchEnd, { passive: true });
-    })();
   </script>
 </body>
 </html>
