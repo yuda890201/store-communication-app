@@ -83,7 +83,9 @@ const PORT = process.env.PORT || 8175;
     tdb.collection('trouble_reports').add({
       target_type: '自作・業務アプリ', category: '勤怠・シフト', quick_trouble_preset: '保存できない',
       comment: '保存ボタンを押しても画面が戻りません。', reporter: 'ゆだ', store_name: '渋谷店',
-      report_time: '2026-09-13 10:30', status: '未対応', has_photo: true, created_at: new Date()
+      report_time: '2026-09-13 10:30', status: '未対応', has_photo: true,
+      // アプリは created_at の降順で並べる。新しいほうがこちら
+      created_at: new Date('2026-09-13T10:30:00+09:00')
     }).then(ref => {
       tdb.collection('trouble_report_photos').doc(ref.id).set({
         photo_data: 'data:image/jpeg;base64,ZmFrZS1qcGVnLWRhdGE=', created_at: new Date()
@@ -93,7 +95,8 @@ const PORT = process.env.PORT || 8175;
       target_type: '自作・業務アプリ', category: 'レジ', quick_trouble_preset: '起動しない',
       comment: '古い形式の報告（写真が本体に直接入っている想定）', reporter: '田中', store_name: '未登録店舗',
       report_time: '2026-09-12 09:00', status: '完了', has_photo: false,
-      photo_data: 'data:image/jpeg;base64,b2xkLWZvcm1hdC1waG90bw==', created_at: new Date()
+      photo_data: 'data:image/jpeg;base64,b2xkLWZvcm1hdC1waG90bw==',
+      created_at: new Date('2026-09-12T09:00:00+09:00')
     });
   });
   await page.waitForTimeout(500);
@@ -105,6 +108,7 @@ const PORT = process.env.PORT || 8175;
   const cardCount = await page.locator('#troubleReportList .card').count();
   console.log('trouble report cards rendered (expect 2):', cardCount);
 
+  // 新しい順に並ぶので、先頭は 09-13 の報告
   const firstCardText = await page.locator('#troubleReportList .card').first().innerText();
   console.log('first card contains category/preset:', firstCardText.includes('勤怠・シフト') && firstCardText.includes('保存できない'));
   console.log('first card shows matched store (渋谷店, registered):', firstCardText.includes('渋谷店') && !firstCardText.includes('一致なし'));
