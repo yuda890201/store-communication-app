@@ -120,8 +120,8 @@
     /* ===== 連絡ノート: 引継ぎウィザード ===== */
     .handover-prev-answer { font-size: 0.78rem; color: #777; background: #f4f6f8; border-left: 3px solid #dde2eb; border-radius: 0 6px 6px 0; padding: 7px 10px; margin-bottom: 12px; line-height: 1.5; }
     .handover-prev-answer .handover-prev-detail { color: #555; }
-    .kinko-open-note { background: #fff8e1; border: 1px solid #f0ad4e; border-radius: 6px; padding: 10px 12px; margin: 10px 0; font-size: 0.85rem; color: #7a5b00; text-align: left; line-height: 1.6; }
-    .kinko-open-note strong { color: #a05a00; }
+    .kinko-open-note { background: #f4f6f8; border-left: 3px solid #0084ff; border-radius: 0 6px 6px 0; padding: 10px 12px; margin: 10px 0; font-size: 0.85rem; color: #444; text-align: left; line-height: 1.6; }
+    .kinko-open-note strong { color: #0d6efd; }
     .kinko-open-back { font-size: 0.8rem; color: #666; margin: 10px 0 0; line-height: 1.6; text-align: left; }
     .store-pin-map { margin: 8px 0 10px; font-size: 0.8rem; }
     .store-pin-map-row { display: flex; align-items: baseline; gap: 6px; padding: 3px 0; border-bottom: 1px dashed #e3e6ea; }
@@ -1174,8 +1174,8 @@
     }
 
     // ===== バージョン表示 (再読み込み後に最新版を掴めたか確認できるように) =====
-    const APP_VERSION = 'v1.10.0';
-    const APP_BUILD_TIME = '2026-09-17 20:20';
+    const APP_VERSION = 'v1.11.0';
+    const APP_BUILD_TIME = '2026-09-17 21:40';
     function updateVersionDisplay() {
       const el = document.getElementById('appVersionInfo');
       if (!el) return;
@@ -1277,7 +1277,7 @@
         'notebook.wizard.done.kinko': 'Finish by checking the safe.',
         'notebook.wizard.done.openKinko': '🔐 Open the safe app',
         'notebook.wizard.done.close': 'Close',
-        'notebook.wizard.done.checkStore': 'Check that <strong>{store}</strong> is selected in the safe app. If another store is still selected, the count will be saved to that store instead.',
+        'notebook.wizard.done.opensAs': 'The safe app opens as <strong>{store}</strong>. If a different store appears, do not save — tell your manager.',
         'notebook.wizard.done.howToReturn': 'When the count is done, tap the ✕ at the top left to come back here. The result is imported into the handover automatically.',
         'notebook.kinko.title': 'Safe / register cash check',
         'notebook.kinko.attach': 'Import safe result',
@@ -1414,7 +1414,7 @@
         'notebook.wizard.done.kinko': 'अन्त्यमा तिजोरी जाँच गर्नुहोस्।',
         'notebook.wizard.done.openKinko': '🔐 तिजोरी एप खोल्नुहोस्',
         'notebook.wizard.done.close': 'बन्द गर्नुहोस्',
-        'notebook.wizard.done.checkStore': 'तिजोरी एपमा <strong>{store}</strong> छानिएको छ कि छैन जाँच्नुहोस्। अर्को पसल छानिएको भए, गणना त्यहीँ सुरक्षित हुन्छ।',
+        'notebook.wizard.done.opensAs': 'तिजोरी एप <strong>{store}</strong> को रूपमा खुल्छ। अर्को पसल देखिए, सुरक्षित नगर्नुहोस् — म्यानेजरलाई भन्नुहोस्।',
         'notebook.wizard.done.howToReturn': 'गणना सकिएपछि माथि बायाँको ✕ थिचेर यहाँ फर्कनुहोस्। नतिजा स्वतः ह्यान्डओभरमा जान्छ।',
         'notebook.kinko.title': 'तिजोरी / क्यास जाँच',
         'notebook.kinko.attach': 'तिजोरीको नतिजा ल्याउनुहोस्',
@@ -3191,7 +3191,7 @@
 
       // 自動で開かずタップさせるのは、投稿の通信を挟むとブラウザが
       // ユーザー操作とみなさず、ポップアップとして遮断されるため
-      document.getElementById('handoverKinkoLink').href = kinkoAppUrl;
+      document.getElementById('handoverKinkoLink').href = buildKinkoOpenUrl(activeStore) || kinkoAppUrl;
 
       // 金庫アプリは自分が最後に開いた店舗を覚えているため、別店舗のまま
       // 保存される事故が起きる。開く前に、選ぶべき店舗名を出しておく。
@@ -3199,9 +3199,11 @@
       const noteEl = document.getElementById('handoverKinkoStoreNote');
       const target = kinkoStoreNameFor(activeStore);
       if (noteEl && target) {
-        const tmpl = t('notebook.wizard.done.checkStore')
-          || '金庫アプリで <strong>{store}</strong> が選ばれているか確認してください。別の店舗のままだと、そちらに保存されてしまいます。';
-        noteEl.innerHTML = '\u26A0\uFE0F ' + tmpl.replace('{store}', escapeHtml(target));
+        // 取り違えは金庫アプリ側で防がれるようになったので、警告ではなく事実を出す。
+        // 毎回警告を出すと、本当に警告すべきときに読まれなくなる
+        const tmpl = t('notebook.wizard.done.opensAs')
+          || '金庫アプリは <strong>{store}</strong> として開きます。違う店舗が出たら、そのまま保存せず店長に連絡してください。';
+        noteEl.innerHTML = tmpl.replace('{store}', escapeHtml(target));
         noteEl.style.display = 'block';
       } else if (noteEl) {
         noteEl.style.display = 'none';
@@ -3229,6 +3231,19 @@
     function kinkoStoreNameFor(storeName) {
       const own = (storeName || '').trim();
       return ((kinkoStoreMap && kinkoStoreMap[own]) || own).trim();
+    }
+
+    // 金庫アプリに「どの店舗を開くか」を渡す。先方が #store=<encodeURIComponent(店舗名)>
+    // を受け取れるようになったため、店舗の取り違えは開いた時点で防げる。
+    // なお店舗別PINでログイン中の金庫アプリはこの指定を無視する（店舗がPINで確定しており、
+    // 他店舗に切り替わるほうが危険なため）。その場合も取り違えは起きない
+    function buildKinkoOpenUrl(storeName) {
+      const base = (kinkoAppUrl || '').trim();
+      if (!base) return '';
+      const target = kinkoStoreNameFor(storeName);
+      if (!target) return base;
+      // 既存のハッシュは捨てる。#store= を重ねると先方が読めない
+      return base.split('#')[0] + '#store=' + encodeURIComponent(target);
     }
 
     async function getKinkoDb() {
