@@ -36,6 +36,7 @@ NODE_PATH=/opt/node22/lib/node_modules node tests/pin-rate-limit-test.js
 | `handover-prev-answer-test.js` | 引継ぎウィザードの前回回答の参考表示 |
 | `handover-types-test.js` | 引継ぎウィザードの回答タイプ（件数の選択式・写真必須・プリセット複数選択）と、投稿後の金庫アプリ起動 |
 | `kinko-integration-test.js` | 金庫アプリとの連携（引継ぎ書への取り込み・店舗名の対応付け・事務所金庫の確認） |
+| `kinko-auto-import-test.js` | 金庫アプリから戻ったときの自動取り込みと、未取り込みの警告表示 |
 | `i18n-test.js` | 英語・ネパール語への切り替え |
 | `trouble-reports-test.js` | 不具合報告アプリとの連携（別プロジェクトの読み取り専用購読） |
 | `reminders-test.js` | 忘れ物の自動リマインド、期限超過の督促 |

@@ -121,6 +121,8 @@
     .handover-prev-answer { font-size: 0.78rem; color: #777; background: #f4f6f8; border-left: 3px solid #dde2eb; border-radius: 0 6px 6px 0; padding: 7px 10px; margin-bottom: 12px; line-height: 1.5; }
     .handover-prev-answer .handover-prev-detail { color: #555; }
     .kinko-block { background: #f4f6f8; border-left: 3px solid #0084ff; border-radius: 0 6px 6px 0; padding: 10px 12px; margin-top: 10px; }
+    .kinko-block-missing { background: #fff8e1; border-left-color: #f0ad4e; }
+    .kinko-block-missing .kinko-block-title { color: #b8860b; }
     .kinko-block-title { font-size: 0.8rem; font-weight: bold; color: #0d6efd; margin-bottom: 4px; }
     .kinko-block-body { font-size: 0.82rem; color: #444; white-space: pre-wrap; line-height: 1.6; }
     .handover-count-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 8px; margin-bottom: 12px; }
@@ -428,7 +430,8 @@
       <div class="card" id="handoverDoneCard" style="display: none; margin-top: 14px; text-align: center;">
         <h2 data-i18n="notebook.wizard.done.title">✅ 引継ぎを投稿しました</h2>
         <p style="font-size: 0.85rem; color: #666;" data-i18n="notebook.wizard.done.kinko">最後に金庫の確認をすると引継ぎ完了です。</p>
-        <a id="handoverKinkoLink" class="btn-primary handover-kinko-link" href="#" target="_blank" rel="noopener" data-i18n="notebook.wizard.done.openKinko">🔐 金庫アプリを開く</a>
+        <a id="handoverKinkoLink" class="btn-primary handover-kinko-link" href="#" target="_blank" rel="noopener" onclick="markAwaitingKinkoReturn()" data-i18n="notebook.wizard.done.openKinko">🔐 金庫アプリを開く</a>
+        <div id="handoverKinkoImportStatus" class="status"></div>
         <button class="btn-clear" style="width: 100%; margin-top: 10px;" onclick="closeHandoverWizard()" data-i18n="notebook.wizard.done.close">閉じる</button>
       </div>
 
@@ -1246,6 +1249,8 @@
         'notebook.kinko.title': 'Safe / register cash check',
         'notebook.kinko.attach': 'Import safe result',
         'notebook.kinko.print': 'Print',
+        'notebook.kinko.missingTitle': 'Safe result not imported yet',
+        'notebook.kinko.missingBody': 'Use "🔐 Import safe result" in the handover list below.',
         'notebook.wizard.back': '‹ Back',
         'notebook.wizard.next': 'Next ›',
         'notebook.wizard.toPreview': 'To preview ›',
@@ -1379,6 +1384,8 @@
         'notebook.kinko.title': 'तिजोरी / क्यास जाँच',
         'notebook.kinko.attach': 'तिजोरीको नतिजा ल्याउनुहोस्',
         'notebook.kinko.print': 'प्रिन्ट',
+        'notebook.kinko.missingTitle': 'तिजोरीको नतिजा अझै ल्याइएको छैन',
+        'notebook.kinko.missingBody': 'तलको सूचीमा "🔐 तिजोरीको नतिजा ल्याउनुहोस्" थिच्नुहोस्।',
         'notebook.wizard.back': '‹ फिर्ता',
         'notebook.wizard.next': 'अर्को ›',
         'notebook.wizard.toPreview': 'पूर्वावलोकनमा जानुहोस् ›',
@@ -2397,10 +2404,18 @@
       }
       if (latestKinko) {
         if (latestHandover && latestHandover.kinkoRecord) {
+          latestKinko.classList.remove('kinko-block-missing');
           latestKinko.innerHTML = `<div class="kinko-block-title">🔐 ${escapeHtml(t('notebook.kinko.title') || '金庫・レジ現金点検')}</div>`
             + `<div class="kinko-block-body">${escapeHtml(formatKinkoRecordText(latestHandover.kinkoRecord))}</div>`;
           latestKinko.style.display = 'block';
+        } else if (latestHandover && kinkoConfig) {
+          // 空欄のまま黙って出すと、点検していないのか取り込み忘れなのか区別がつかない
+          latestKinko.classList.add('kinko-block-missing');
+          latestKinko.innerHTML = `<div class="kinko-block-title">⚠️ ${escapeHtml(t('notebook.kinko.missingTitle') || '金庫の結果が未取り込みです')}</div>`
+            + `<div class="kinko-block-body">${escapeHtml(t('notebook.kinko.missingBody') || '下の引継ぎ一覧の「🔐 金庫の結果を取り込む」から取り込んでください。')}</div>`;
+          latestKinko.style.display = 'block';
         } else {
+          latestKinko.classList.remove('kinko-block-missing');
           latestKinko.innerHTML = '';
           latestKinko.style.display = 'none';
         }
@@ -2975,6 +2990,8 @@
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       await postImportantHandoverItemsToBulletin(handoverAnswers, docRef.id);
+      // 金庫アプリから戻ってきたときに自動で取り込む先
+      justPostedHandover = { entryId: docRef.id, store: activeStore };
       showHandoverDone();
     }
 
@@ -2988,6 +3005,7 @@
       document.getElementById('handoverProgressLabel').style.display = 'none';
       document.getElementById('handoverCancelBtn').style.display = 'none';
       document.getElementById('handoverDoneCard').style.display = 'block';
+      document.getElementById('handoverKinkoImportStatus').innerText = '';
 
       // 自動で開かずタップさせるのは、投稿の通信を挟むとブラウザが
       // ユーザー操作とみなさず、ポップアップとして遮断されるため
@@ -3125,20 +3143,57 @@
       }
     }
 
+    async function saveKinkoRecordToEntry(entryId, storeName) {
+      const record = await fetchLatestKinkoRecord(storeName);
+      await db.collection('notebookEntries').doc(entryId).update({ kinkoRecord: record });
+    }
+
     async function attachKinkoRecord(entryId, storeName, btn) {
       if (!requireDb()) return;
       const original = btn.innerText;
       btn.disabled = true;
       btn.innerText = '取り込み中...';
       try {
-        const record = await fetchLatestKinkoRecord(storeName);
-        await db.collection('notebookEntries').doc(entryId).update({ kinkoRecord: record });
+        await saveKinkoRecordToEntry(entryId, storeName);
       } catch (e) {
         alert('金庫の結果を取り込めませんでした:\n' + e.message);
         btn.disabled = false;
         btn.innerText = original;
       }
     }
+
+    // 「金庫アプリを開く」を押してから戻ってくるまでの間だけ立てる印。
+    // 引継ぎを投稿した本人が、そのまま金庫を点検して戻ってくる導線を前提にしている
+    let justPostedHandover = null;
+    let awaitingKinkoReturn = false;
+
+    function markAwaitingKinkoReturn() {
+      if (justPostedHandover) awaitingKinkoReturn = true;
+    }
+
+    // 金庫アプリから戻ってきたら、取り込みボタンを押させずに自動で取り込む。
+    // 押し忘れるとその引継ぎだけ金庫欄が空のまま残ってしまうため
+    async function importKinkoOnReturn() {
+      if (!awaitingKinkoReturn || !justPostedHandover || !db) return;
+      awaitingKinkoReturn = false;
+      const { entryId, store } = justPostedHandover;
+      const statusEl = document.getElementById('handoverKinkoImportStatus');
+      const setStatus = text => { if (statusEl) statusEl.innerText = text; };
+      setStatus('金庫の結果を取り込んでいます...');
+      try {
+        await saveKinkoRecordToEntry(entryId, store);
+        justPostedHandover = null;
+        setStatus('\u2705 金庫の結果を引継ぎ書に取り込みました');
+      } catch (e) {
+        // 点検がまだ終わっていないだけのこともあるので、ここでは引き止めない。
+        // 連絡ノートの取り込みボタンからいつでもやり直せる
+        setStatus('金庫の結果はまだ取り込めていません（' + e.message.split('\n')[0] + '）。連絡ノートの「\uD83D\uDD10 金庫の結果を取り込む」からやり直せます。');
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') importKinkoOnReturn();
+    });
 
     // ===== 引継ぎ書の印刷 =====
     function printHandoverDoc(text, author, timeText, kinkoRecord) {
