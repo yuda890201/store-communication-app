@@ -1169,8 +1169,8 @@
     }
 
     // ===== バージョン表示 (再読み込み後に最新版を掴めたか確認できるように) =====
-    const APP_VERSION = 'v1.6.0';
-    const APP_BUILD_TIME = '2026-09-17 16:30';
+    const APP_VERSION = 'v1.7.0';
+    const APP_BUILD_TIME = '2026-09-17 17:50';
     function updateVersionDisplay() {
       const el = document.getElementById('appVersionInfo');
       if (!el) return;
@@ -3315,9 +3315,32 @@
       }
     }
 
+    // 金庫アプリは「実査が未入力」と「0円を数えた」を区別せず、未入力のままでも
+    // 保存できてしまう。そのまま取り込むと「金庫が20万円不足」のような嘘の数字が
+    // 引継ぎ書に載り、印刷されて記録に残る。金庫アプリ側が直るまでの防御。
+    function looksUncounted(record) {
+      if (!record) return false;
+      const total = parseAmount(record.vaultTotal);
+      const target = typeof record.vaultTarget === 'number'
+        ? record.vaultTarget : parseAmount(record.vaultTarget);
+      // 設定金額があるのに実査合計が0 = 数えていない可能性が高い。
+      // 本当に空の金庫もあり得るので、禁止ではなく確認にとどめる
+      return total === 0 && target > 0;
+    }
+
+    function uncountedWarningText(record) {
+      const target = typeof record.vaultTarget === 'number'
+        ? record.vaultTarget.toLocaleString() : (record.vaultTarget || '');
+      return `金庫アプリの最新の記録は、実査合計が0円のまま保存されています。\n`
+        + `（設定金額 ${target} 円 ／ 過不足 ${record.vaultDiff || ''} 円）\n\n`
+        + `金庫の中身を数えずに保存された可能性があります。このまま取り込むと、`
+        + `実際には起きていない過不足が引継ぎ書に残ります。`;
+    }
+
     async function saveKinkoRecordToEntry(entryId, storeName) {
       const record = await fetchLatestKinkoRecord(storeName);
       await db.collection('notebookEntries').doc(entryId).update({ kinkoRecord: record });
+      return record;
     }
 
     async function attachKinkoRecord(entryId, storeName, btn) {
@@ -3326,7 +3349,14 @@
       btn.disabled = true;
       btn.innerText = '取り込み中...';
       try {
-        await saveKinkoRecordToEntry(entryId, storeName);
+        const record = await fetchLatestKinkoRecord(storeName);
+        if (looksUncounted(record)
+          && !confirm(uncountedWarningText(record) + '\n\nそれでも取り込みますか？')) {
+          btn.disabled = false;
+          btn.innerText = original;
+          return;
+        }
+        await db.collection('notebookEntries').doc(entryId).update({ kinkoRecord: record });
       } catch (e) {
         alert('金庫の結果を取り込めませんでした:\n' + e.message);
         btn.disabled = false;
@@ -3353,7 +3383,16 @@
       const setStatus = text => { if (statusEl) statusEl.innerText = text; };
       setStatus('金庫の結果を取り込んでいます...');
       try {
-        await saveKinkoRecordToEntry(entryId, store);
+        const record = await fetchLatestKinkoRecord(store);
+        if (looksUncounted(record)) {
+          // 自動取り込みは誰も見ていないところで走るため、疑わしい記録は勝手に保存しない。
+          // justPostedHandover は残すので、金庫アプリで入力し直して戻れば再度取り込める
+          awaitingKinkoReturn = true;
+          setStatus('\u26A0\uFE0F 実査合計が0円のままです。金庫アプリで実査を入力して保存し直してから、'
+            + 'もう一度戻ってきてください。（数えずに取り込むと、実際には起きていない過不足が引継ぎ書に残ります）');
+          return;
+        }
+        await db.collection('notebookEntries').doc(entryId).update({ kinkoRecord: record });
         justPostedHandover = null;
         setStatus('\u2705 金庫の結果を引継ぎ書に取り込みました');
       } catch (e) {
