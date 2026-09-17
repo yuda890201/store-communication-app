@@ -2,6 +2,14 @@ const { chromium } = require('playwright');
 const PORT = process.env.PORT || 8175;
 const fs = require('fs');
 const path = require('path');
+// 日時は実行時刻からの相対で作る。固定文字列だと、実行した時間帯やタイムゾーン次第で
+// 「開いた時刻より古い記録」と判定されて取り込みが止まる（tests/README.md 参照）
+function localDatetime(offsetMs) {
+  const d = new Date(Date.now() + offsetMs);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 (async () => {
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
   const page = await browser.newPage({ viewport: { width: 390, height: 950 } });
@@ -45,7 +53,7 @@ const path = require('path');
   await page.waitForTimeout(500);
 
   // 金庫アプリ側に最新記録を用意する
-  await page.evaluate(() => {
+  await page.evaluate(fresh => {
     const app = window.firebase.apps.find(a => a.name === 'kinkoApp')
       || window.firebase.initializeApp({ apiKey: 'mock-kinko-key', projectId: 'kinko-app-2f5e4' }, 'kinkoApp');
     const kdb = app.firestore();
@@ -53,11 +61,11 @@ const path = require('path');
       stores: [{ id: 'store-kiyokawa', name: '福岡清川二丁目店', target: 200000 }]
     });
     kdb.collection('storesConfig').doc('store-kiyokawa').collection('records').add({
-      datetime: '2026-09-17T09:30', storeId: 'store-kiyokawa', storeName: '福岡清川二丁目店',
+      datetime: fresh, storeId: 'store-kiyokawa', storeName: '福岡清川二丁目店',
       reg1: { staff: '佐藤', cashDiff: '-200', cashDiffDelta: -200, freeCouponDiff: '0', discCouponDiff: '0' },
       vaultTotal: '199,800', vaultTarget: 200000, vaultDiff: '-200', memo: '自動取り込みの確認用'
     });
-  });
+  }, localDatetime(5 * 60 * 1000)); // 「開く」を押す時刻より後
   await page.waitForTimeout(400);
 
   // ===== 引継ぎを1件投稿する =====
@@ -102,7 +110,7 @@ const path = require('path');
   await page.evaluate(() => {
     window.firebase.firestore().collection('notebookEntries').add({
       type: 'handover', store: '清川二丁目', author: 'テスト太郎', text: '・取り込んでいない引継ぎ', answers: [],
-      createdAt: { toDate: () => new Date('2026-09-17T23:00:00+09:00') }
+      createdAt: { toDate: () => new Date(Date.now() + 5 * 60 * 1000) }
     });
   });
   await page.waitForTimeout(600);

@@ -41,7 +41,7 @@ NODE_PATH=/opt/node22/lib/node_modules node tests/pin-rate-limit-test.js
 | `store-pin-map-test.js` | 店舗一覧と店舗別PINの対応表示、並べ替えへの追従、6行目以降の警告 |
 | `kinko-empty-safe-test.js` | 実査0円（本当に空の金庫）の記録を弾かずに取り込むこと、不足額を握りつぶさないこと |
 | `kinko-stale-record-test.js` | 点検より古い記録を取り込まないこと（金庫アプリ側の店舗取り違えの検出）、点検店舗の表示 |
-| `kinko-open-guidance-test.js` | 金庫アプリを開く前の店舗名の注意書きと、戻り方の案内（多言語含む） |
+| `kinko-open-guidance-test.js` | 金庫アプリを開くURLへの店舗指定（`#store=`）、開く前の案内と戻り方（多言語含む） |
 | `i18n-test.js` | 英語・ネパール語への切り替え |
 | `trouble-reports-test.js` | 不具合報告アプリとの連携（別プロジェクトの読み取り専用購読） |
 | `reminders-test.js` | 忘れ物の自動リマインド、期限超過の督促 |
