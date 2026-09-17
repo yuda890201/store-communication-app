@@ -46,5 +46,15 @@ const runTests = () => {
   process.exit(crashed.length ? 1 : 0);
 };
 
-server.on('message', m => { if (m === 'ready') runTests(); });
+let started = false;
+server.on('message', m => { if (m === 'ready') { started = true; runTests(); } });
 server.on('error', e => { console.error('静的サーバーを起動できませんでした:', e.message); process.exit(1); });
+// ポートが使用中だと子プロセスは error ではなく exit で落ちる。
+// これを拾わないと、何も出力しないまま終了してしまう
+server.on('exit', code => {
+  if (!started) {
+    console.error(`静的サーバーが起動前に終了しました (code: ${code})。`);
+    console.error(`ポート ${PORT} が既に使われていないか確認してください。`);
+    process.exit(1);
+  }
+});

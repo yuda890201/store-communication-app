@@ -120,6 +120,9 @@
     /* ===== 連絡ノート: 引継ぎウィザード ===== */
     .handover-prev-answer { font-size: 0.78rem; color: #777; background: #f4f6f8; border-left: 3px solid #dde2eb; border-radius: 0 6px 6px 0; padding: 7px 10px; margin-bottom: 12px; line-height: 1.5; }
     .handover-prev-answer .handover-prev-detail { color: #555; }
+    .setup-qr-holder { max-width: 260px; margin: 10px auto 0; }
+    .setup-qr-holder svg { display: block; width: 100%; height: auto; }
+    .setup-qr-url { font-size: 0.7rem; color: #888; word-break: break-all; margin-top: 8px; line-height: 1.5; }
     .kinko-block { background: #f4f6f8; border-left: 3px solid #0084ff; border-radius: 0 6px 6px 0; padding: 10px 12px; margin-top: 10px; }
     .kinko-block-missing { background: #fff8e1; border-left-color: #f0ad4e; }
     .kinko-block-missing .kinko-block-title { color: #b8860b; }
@@ -863,6 +866,19 @@
       </div>
     </details>
 
+    <details>
+      <summary>📲 スタッフ用セットアップQR</summary>
+      <div style="margin-top: 10px;">
+        <p style="font-size: 0.8rem; color: #666;">新しいスタッフの端末に、この接続設定を読み込ませるためのQRコードです。スマホの<strong>カメラで読むだけ</strong>で設定が入るので、設定画面を触ってもらう必要がありません。読み取ったあとはPINコードと名前を入力すれば使い始められます。</p>
+        <p style="font-size: 0.8rem; color: #666;"><strong>PINコードはQRに入れていません。</strong>PINはデータを守る唯一の壁なので、口頭か貼り紙で別に伝えてください。この設定自体は公開前提の情報（実際の保護はFirebaseのルール側）なので、QRが人目に触れても問題ありません。</p>
+        <button class="btn-secondary" onclick="renderSetupQr()">📷 QRを表示する</button>
+        <div id="setupQrStatus" class="status"></div>
+        <div id="setupQrHolder" class="setup-qr-holder"></div>
+        <div id="setupQrUrl" class="setup-qr-url"></div>
+        <button class="btn-secondary" style="margin-top: 8px;" onclick="printSetupQr()">🖨️ 手順つきで印刷する</button>
+      </div>
+    </details>
+
     <details open>
       <summary>👤 あなたの名前</summary>
       <div style="margin-top: 10px;">
@@ -1122,6 +1138,7 @@
   <div id="printArea"></div>
 
   <script src="vendor/jszip.min.js"></script>
+  <script src="vendor/qrcode.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
@@ -1143,8 +1160,8 @@
     }
 
     // ===== バージョン表示 (再読み込み後に最新版を掴めたか確認できるように) =====
-    const APP_VERSION = 'v1.4.0';
-    const APP_BUILD_TIME = '2026-09-17 13:30';
+    const APP_VERSION = 'v1.5.0';
+    const APP_BUILD_TIME = '2026-09-17 15:10';
     function updateVersionDisplay() {
       const el = document.getElementById('appVersionInfo');
       if (!el) return;
@@ -1599,6 +1616,9 @@
       updateStoreContextLabels();
       updateStoreSwitchButton();
 
+      // QRから開かれた場合、Firebase設定を読む前に取り込む
+      applySetupFromUrl();
+
       const savedFirebaseConfig = localStorage.getItem('firebase_config');
       if (savedFirebaseConfig) document.getElementById('firebaseConfig').value = savedFirebaseConfig;
 
@@ -1866,6 +1886,119 @@
       } catch (e) {
         setDbStatus('❌ Configの形式が不正です: ' + e.message);
       }
+    }
+
+    // ===== スタッフ用セットアップQR =====
+    // Firebase Configは公開前提の情報（実際の保護はFirestore/Storageのルール側）なので、
+    // QRに載せて配っても保護の強さは変わらない。PINは意図的に含めない。PINが唯一の壁であり、
+    // QRの紙は撮影されれば手元に残り続けるため、紙のPINとは流出の性質が違う
+    const SETUP_HASH_PREFIX = '#setup=';
+
+    function encodeSetupPayload(configText) {
+      // URLに載せるのでbase64url（+/= を使わない形）にする
+      const bytes = new TextEncoder().encode(configText);
+      let bin = '';
+      bytes.forEach(b => { bin += String.fromCharCode(b); });
+      return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    function decodeSetupPayload(encoded) {
+      const b64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+      const bin = atob(b64 + '='.repeat((4 - b64.length % 4) % 4));
+      const bytes = Uint8Array.from(bin, ch => ch.charCodeAt(0));
+      return new TextDecoder().decode(bytes);
+    }
+
+    function buildSetupUrl(configText) {
+      // 「?」ではなく「#」に載せる。ハッシュはサーバーに送信されないため、
+      // GitHub Pagesのアクセスログにも残らない
+      return location.origin + location.pathname + SETUP_HASH_PREFIX + encodeSetupPayload(configText);
+    }
+
+    function applySetupFromUrl() {
+      const hash = location.hash || '';
+      if (!hash.startsWith(SETUP_HASH_PREFIX)) return;
+
+      // 読み取れても読み取れなくても、URLからは必ず消す。
+      // 履歴や共有リンクに設定が残り続けるのを避ける
+      const encoded = hash.slice(SETUP_HASH_PREFIX.length);
+      history.replaceState(null, '', location.pathname + location.search);
+
+      let configText;
+      try {
+        configText = decodeSetupPayload(encoded);
+        const parsed = JSON.parse(configText);
+        if (!parsed || !parsed.apiKey || !parsed.projectId) throw new Error('apiKey か projectId がありません');
+      } catch (e) {
+        alert('セットアップQRを読み取れませんでした。オーナーに新しいQRを出してもらってください。\n\n' + e.message);
+        return;
+      }
+
+      // 別プロジェクトに繋ぎ替えると既存データが見えなくなるので、黙って上書きしない
+      const existing = localStorage.getItem('firebase_config');
+      if (existing && existing.trim() !== configText.trim()) {
+        if (!confirm('この端末にはすでに別のデータベース設定が入っています。\nQRの設定で上書きしますか？')) return;
+      }
+
+      localStorage.setItem('firebase_config', configText);
+      if (existing) location.reload();
+    }
+
+    function renderSetupQr() {
+      const statusEl = document.getElementById('setupQrStatus');
+      const holder = document.getElementById('setupQrHolder');
+      const urlEl = document.getElementById('setupQrUrl');
+      holder.innerHTML = '';
+      urlEl.innerText = '';
+
+      const configText = (localStorage.getItem('firebase_config') || '').trim();
+      if (!configText) {
+        statusEl.innerText = 'この端末にFirebase設定が入っていません。先に⚙️設定の「🔥 Firebaseデータベース設定」を登録してください。';
+        return;
+      }
+      let normalized;
+      try {
+        // 余分な空白や改行を落としてQRを小さくする
+        normalized = JSON.stringify(JSON.parse(configText));
+      } catch (e) {
+        statusEl.innerText = 'Firebase設定がJSONとして読めません: ' + e.message;
+        return;
+      }
+
+      const url = buildSetupUrl(normalized);
+      try {
+        const qr = qrcode(0, 'M');
+        qr.addData(url);
+        qr.make();
+        holder.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
+        const svg = holder.querySelector('svg');
+        if (svg) { svg.removeAttribute('width'); svg.removeAttribute('height'); svg.style.width = '100%'; svg.style.height = 'auto'; }
+        urlEl.innerText = url;
+        statusEl.innerText = '';
+      } catch (e) {
+        statusEl.innerText = 'QRを作成できませんでした: ' + e.message;
+      }
+    }
+
+    function printSetupQr() {
+      const holder = document.getElementById('setupQrHolder');
+      if (!holder.innerHTML) { alert('先に「QRを表示する」を押してください。'); return; }
+      const printArea = document.getElementById('printArea');
+      printArea.innerHTML = `
+        <h1 style="font-size: 1.3rem; text-align: center; margin-bottom: 4px;">店舗コミュニケーションアプリ セットアップ</h1>
+        <p style="text-align: center; font-size: 0.9rem; color: #444; margin-top: 0;">スマホのカメラでQRを読み取ってください</p>
+        <div style="width: 62mm; margin: 10px auto;">${holder.innerHTML}</div>
+        <ol style="font-size: 1rem; line-height: 2; max-width: 120mm; margin: 0 auto;">
+          <li>スマホの<strong>カメラ</strong>でこのQRを読み取り、表示されたリンクを開く</li>
+          <li><strong>PINコード</strong>を入力する（PINは店長に聞いてください）</li>
+          <li><strong>自分の名前</strong>を入力する</li>
+          <li>ブラウザのメニューから<strong>「ホーム画面に追加」</strong>をしておくと次から一発で開けます</li>
+        </ol>
+        <p style="font-size: 0.8rem; color: #666; max-width: 120mm; margin: 14px auto 0;">
+          ※ このQRにPINコードは入っていません。QRだけでは中身は見られません。<br>
+          ※ 読み取ってもうまくいかない場合は、QRを出し直してもらってください。
+        </p>`;
+      window.print();
     }
 
     function saveFirebaseConfig() {
