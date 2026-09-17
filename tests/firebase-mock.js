@@ -5,6 +5,12 @@ function installFirebaseMock() {
     const docListeners = {};
     let idCounter = 1;
 
+    // テストから「この操作は何も保存していない」ことを検証できるようにする
+    function recordWrite(path) {
+      window.__firestoreWrites = window.__firestoreWrites || [];
+      window.__firestoreWrites.push({ app: name, path });
+    }
+
     function notifyDocListeners(key) {
       (docListeners[key] || []).forEach(cb => cb());
       const parts = key.split('/');
@@ -23,16 +29,19 @@ function installFirebaseMock() {
           return { exists: !!data, id, data: () => data || {} };
         },
         async set(data, opts) {
+          recordWrite(key);
           docStore[key] = (opts && opts.merge && docStore[key]) ? { ...docStore[key], ...data } : { ...data };
           notifyDocListeners(key);
           notifyDocListeners(colPath);
         },
         async update(data) {
+          recordWrite(key);
           docStore[key] = { ...(docStore[key] || {}), ...data };
           notifyDocListeners(key);
           notifyDocListeners(colPath);
         },
         async delete() {
+          recordWrite(key);
           delete docStore[key];
           notifyDocListeners(key);
           notifyDocListeners(colPath);
@@ -81,6 +90,7 @@ function installFirebaseMock() {
         },
         async add(data) {
           const id = 'auto' + (idCounter++);
+          recordWrite(colPath + '/' + id);
           docStore[colPath + '/' + id] = { ...data };
           notifyDocListeners(colPath);
           return { id };

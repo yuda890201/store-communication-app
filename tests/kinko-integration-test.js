@@ -59,6 +59,12 @@ const path = require('path');
   await page.click('button[onclick="saveKinkoConfig()"]');
   await page.waitForTimeout(300);
   console.log('config saved (expect 保存しました):', await page.locator('#kinkoConfigStatus').innerText());
+
+  // 両アプリで店舗名の付け方が違う（こちら「清川二丁目」／金庫「福岡清川二丁目店」）
+  await page.fill('#kinkoStoreMapInput', '清川二丁目 = 福岡清川二丁目店');
+  await page.click('button[onclick="saveKinkoStoreMap()"]');
+  await page.waitForTimeout(300);
+  console.log('store map saved (expect 1件):', await page.locator('#kinkoStoreMapStatus').innerText());
   await page.click('#ownerDrawer .side-drawer-close-btn');
   await page.click('#sideDrawer .side-drawer-close-btn');
   await page.waitForTimeout(300);
@@ -69,20 +75,33 @@ const path = require('path');
     const app = window.firebase.apps.find(a => a.name === 'kinkoApp')
       || window.firebase.initializeApp({ apiKey: 'mock-kinko-key', projectId: 'kinko-app-2f5e4' }, 'kinkoApp');
     const kdb = app.firestore();
+    // 金庫アプリ側の実際の登録名・実際の値の形式に合わせている
+    // (vaultTotalはtoLocaleString、vaultDiffは正のときだけ+付き、いずれも円記号なし)
     kdb.collection('meta').doc('storeMaster').set({
-      stores: [{ id: 'store-kiyokawa', name: '清川二丁目', target: 200000 }]
+      stores: [
+        { id: 'store-1', name: '1号店', target: 200000 },
+        { id: 'store-kiyokawa', name: '福岡清川二丁目店', target: 200000 },
+        { id: 'store-sumiyoshi', name: '博多住吉通り店', target: 200000 },
+        // 事務所（バックルーム）の金庫。店舗の引継ぎには紐づかず、責任者だけが確認する
+        { id: 'safe-office', name: '事務所金庫', target: 500000 }
+      ]
+    });
+    kdb.collection('storesConfig').doc('safe-office').collection('records').add({
+      datetime: '2026-09-16T08:00', storeId: 'safe-office', storeName: '事務所金庫',
+      vaultTotal: '498,000', vaultTarget: 500000, vaultDiff: '-2,000', memo: '両替分未精算'
     });
     const recs = kdb.collection('storesConfig').doc('store-kiyokawa').collection('records');
     recs.add({
-      datetime: '2026-09-15T09:00', storeId: 'store-kiyokawa', storeName: '清川二丁目',
-      reg1: { staff: '前任者', cashDiff: '0円', freeCouponDiff: '0', discCouponDiff: '0' },
-      reg2: { staff: '前任者2', cashDiff: '0円', freeCouponDiff: '0', discCouponDiff: '0' },
+      datetime: '2026-09-15T09:00', storeId: 'store-kiyokawa', storeName: '福岡清川二丁目店',
+      reg1: { staff: '前任者', cashDiff: '0', freeCouponDiff: '0', discCouponDiff: '0' },
+      reg2: { staff: '前任者2', cashDiff: '0', freeCouponDiff: '0', discCouponDiff: '0' },
       vaultTotal: '200,000', vaultTarget: 200000, vaultDiff: '0', memo: ''
     });
     recs.add({
-      datetime: '2026-09-16T10:30', storeId: 'store-kiyokawa', storeName: '清川二丁目',
-      reg1: { staff: '佐藤', cashDiff: '-100円', freeCouponDiff: '1', discCouponDiff: '0' },
-      reg2: { staff: '鈴木', cashDiff: '0円', freeCouponDiff: '0', discCouponDiff: '2' },
+      datetime: '2026-09-16T10:30', storeId: 'store-kiyokawa', storeName: '福岡清川二丁目店',
+      // 累計-300のうち今回分が-100。担当者の責任範囲はDelta側
+      reg1: { staff: '佐藤', cashDiff: '-300', cashDiffDelta: -100, freeCouponDiff: '1', freeCouponDiffDelta: 1, discCouponDiff: '0', discCouponDiffDelta: 0 },
+      reg2: { staff: '鈴木', cashDiff: '0', cashDiffDelta: 0, freeCouponDiff: '0', freeCouponDiffDelta: 0, discCouponDiff: '2', discCouponDiffDelta: 2 },
       vaultTotal: '199,900', vaultTarget: 200000, vaultDiff: '-100', memo: 'レジ2番で釣銭違い'
     });
   });
@@ -113,6 +132,9 @@ const path = require('path');
   console.log('shows the latest record, not the older one (expect true):', kinkoText.includes('2026-09-16 10:30') && !kinkoText.includes('2026-09-15'));
   console.log('shows both register staff (expect true):', kinkoText.includes('佐藤') && kinkoText.includes('鈴木'));
   console.log('shows vault figures (expect true):', kinkoText.includes('199,900') && kinkoText.includes('200,000'));
+  // 累計と今回分が違うときだけ併記し、同じときは重複させない
+  console.log('cumulative and this-shift shown together (expect true):', kinkoText.includes('-300（今回分 -100）'));
+  console.log('no redundant delta when equal (expect false):', kinkoText.includes('0（今回分 0）'));
   console.log('shows memo (expect true):', kinkoText.includes('レジ2番で釣銭違い'));
   console.log('import button hidden after attaching (expect 0):', await page.locator('#notebookList button:has-text("金庫の結果を取り込む")').count());
   // 一番見られる「最新の引継ぎ」にも出ること
@@ -150,6 +172,31 @@ const path = require('path');
     await page.waitForTimeout(900);
   }
   console.log('unmatched store surfaces an error (expect true):', dialogs.some(m => m.includes('店舗が見つかりません')));
+
+  // ===== 事務所金庫の状況をその場で確認できること（保存はしない） =====
+  await page.evaluate(() => openView('home'));
+  await page.waitForTimeout(200);
+  await page.click('.home-topbar .settings-btn:has-text("⚙️")');
+  await page.waitForTimeout(200);
+  await page.click('button[onclick="openOwnerDrawer()"]');
+  await page.waitForTimeout(300);
+  await page.evaluate(() => {
+    document.querySelector('button[onclick="loadKinkoSafeStatus()"]').closest('details').open = true;
+    // ここから先の書き込みだけを見たいので、一度リセットする
+    window.__firestoreWrites = [];
+  });
+  console.log('nothing listed before loading (expect 0):', await page.locator('#kinkoSafeStatusList .kinko-block').count());
+  await page.click('button[onclick="loadKinkoSafeStatus()"]');
+  await page.waitForTimeout(900);
+  console.log('lists every safe in the safe app (expect 4):', await page.locator('#kinkoSafeStatusList .kinko-block').count());
+  const safeText = await page.locator('#kinkoSafeStatusList').innerText();
+  console.log('includes the back-room safe (expect true):', safeText.includes('事務所金庫') && safeText.includes('498,000'));
+  console.log('includes its memo (expect true):', safeText.includes('両替分未精算'));
+  // 記録がまだ無い店舗でも空欄にせず、そう書く
+  console.log('store with no record says so (expect true):', safeText.includes('まだ記録がありません'));
+  console.log('status message shows the count (expect true):', (await page.locator('#kinkoSafeStatusMsg').innerText()).includes('4件'));
+  // 意図的にどこにも保存しない（古い値が残らない・スタッフに見えない）
+  console.log('saved nothing anywhere (expect []):', JSON.stringify(await page.evaluate(() => window.__firestoreWrites)));
 
   console.log('errors:', JSON.stringify(errors));
   await browser.close();
