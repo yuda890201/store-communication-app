@@ -1169,8 +1169,8 @@
     }
 
     // ===== バージョン表示 (再読み込み後に最新版を掴めたか確認できるように) =====
-    const APP_VERSION = 'v1.8.0';
-    const APP_BUILD_TIME = '2026-09-17 18:40';
+    const APP_VERSION = 'v1.9.0';
+    const APP_BUILD_TIME = '2026-09-17 19:30';
     function updateVersionDisplay() {
       const el = document.getElementById('appVersionInfo');
       if (!el) return;
@@ -2667,7 +2667,8 @@
             const kinkoBtn = document.createElement('button');
             kinkoBtn.className = 'btn-outline';
             kinkoBtn.innerText = '🔐 ' + (t('notebook.kinko.attach') || '金庫の結果を取り込む');
-            kinkoBtn.onclick = () => attachKinkoRecord(e.id, e.store || activeStore, kinkoBtn);
+            const entryTime = (e.createdAt && e.createdAt.toDate) ? e.createdAt.toDate() : null;
+            kinkoBtn.onclick = () => attachKinkoRecord(e.id, e.store || activeStore, kinkoBtn, entryTime);
             actions.appendChild(kinkoBtn);
           }
           const printBtn = document.createElement('button');
@@ -3262,6 +3263,9 @@
     function formatKinkoRecordText(r) {
       if (!r) return '';
       const lines = [];
+      // どの店舗の点検かを必ず出す。金庫アプリ側の店舗選択がこちらと違っていても、
+      // 出ていなければ誰も気づけない（実際に別店舗の点検が入る事故が起きた）
+      if (r.storeName) lines.push(`点検店舗: ${r.storeName}`);
       lines.push(`点検日時: ${String(r.datetime || '').replace('T', ' ')}`);
       const target = typeof r.vaultTarget === 'number' ? r.vaultTarget.toLocaleString() : (r.vaultTarget || '');
       lines.push(`金庫 実査合計: ${r.vaultTotal || ''} 円 ／ 設定金額: ${target} 円 ／ 過不足: ${r.vaultDiff || ''} 円`);
@@ -3315,19 +3319,51 @@
       }
     }
 
+    // 金庫アプリの datetime は "2026-09-17T13:09" のようなローカル時刻の文字列。
+    // タイムゾーン指定が無い日時文字列をJSはローカル時刻として解釈するので、そのまま渡す
+    function kinkoRecordTime(record) {
+      if (!record || !record.datetime) return null;
+      const d = new Date(record.datetime);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    // 点検したつもりでも、金庫アプリ側が別店舗を開いていると、その店舗に保存され、
+    // こちらは古い記録を拾ってしまう。黙って古い数字を引継ぎ書に載せない
+    function isStaleRecord(record, since) {
+      const t = kinkoRecordTime(record);
+      if (!t || !since) return false;
+      return t.getTime() < since.getTime();
+    }
+
+    function staleRecordText(record, since) {
+      return `金庫アプリから取得できた最新の記録は ${String(record.datetime || '').replace('T', ' ')} のもので、`
+        + `${since.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 以降の新しい点検が見つかりません。\n\n`
+        + `点検店舗: ${record.storeName || '(不明)'}\n\n`
+        + `金庫アプリ側で別の店舗が開かれていて、そちらに保存された可能性があります。`
+        + `金庫アプリの店舗名を確認してください。`;
+    }
+
     async function saveKinkoRecordToEntry(entryId, storeName) {
       const record = await fetchLatestKinkoRecord(storeName);
       await db.collection('notebookEntries').doc(entryId).update({ kinkoRecord: record });
       return record;
     }
 
-    async function attachKinkoRecord(entryId, storeName, btn) {
+    async function attachKinkoRecord(entryId, storeName, btn, entryTime) {
       if (!requireDb()) return;
       const original = btn.innerText;
       btn.disabled = true;
       btn.innerText = '取り込み中...';
       try {
-        await saveKinkoRecordToEntry(entryId, storeName);
+        const record = await fetchLatestKinkoRecord(storeName);
+        // 引継ぎより前の点検を貼るのは、たいてい店舗の取り違え
+        if (isStaleRecord(record, entryTime)
+          && !confirm(staleRecordText(record, entryTime) + '\n\nそれでもこの記録を取り込みますか？')) {
+          btn.disabled = false;
+          btn.innerText = original;
+          return;
+        }
+        await db.collection('notebookEntries').doc(entryId).update({ kinkoRecord: record });
       } catch (e) {
         alert('金庫の結果を取り込めませんでした:\n' + e.message);
         btn.disabled = false;
@@ -3341,7 +3377,10 @@
     let awaitingKinkoReturn = false;
 
     function markAwaitingKinkoReturn() {
-      if (justPostedHandover) awaitingKinkoReturn = true;
+      if (!justPostedHandover) return;
+      awaitingKinkoReturn = true;
+      // これより後の点検記録でなければ「点検して戻ってきた」とは言えない
+      justPostedHandover.openedAt = new Date();
     }
 
     // 金庫アプリから戻ってきたら、取り込みボタンを押させずに自動で取り込む。
@@ -3352,9 +3391,17 @@
       const { entryId, store } = justPostedHandover;
       const statusEl = document.getElementById('handoverKinkoImportStatus');
       const setStatus = text => { if (statusEl) statusEl.innerText = text; };
+      const openedAt = justPostedHandover.openedAt;
       setStatus('金庫の結果を取り込んでいます...');
       try {
-        await saveKinkoRecordToEntry(entryId, store);
+        const record = await fetchLatestKinkoRecord(store);
+        if (isStaleRecord(record, openedAt)) {
+          // 取り込み待ちは残す。金庫アプリで正しい店舗を選び直して保存すれば、戻った時に取り込まれる
+          awaitingKinkoReturn = true;
+          setStatus('\u26A0\uFE0F ' + staleRecordText(record, openedAt).replace(/\n+/g, ' '));
+          return;
+        }
+        await db.collection('notebookEntries').doc(entryId).update({ kinkoRecord: record });
         justPostedHandover = null;
         setStatus('\u2705 金庫の結果を引継ぎ書に取り込みました');
       } catch (e) {

@@ -40,6 +40,7 @@ NODE_PATH=/opt/node22/lib/node_modules node tests/pin-rate-limit-test.js
 | `setup-qr-test.js` | スタッフ用セットアップQRの生成・新端末での取り込み・壊れたQR・既存設定の上書き確認 |
 | `store-pin-map-test.js` | 店舗一覧と店舗別PINの対応表示、並べ替えへの追従、6行目以降の警告 |
 | `kinko-empty-safe-test.js` | 実査0円（本当に空の金庫）の記録を弾かずに取り込むこと、不足額を握りつぶさないこと |
+| `kinko-stale-record-test.js` | 点検より古い記録を取り込まないこと（金庫アプリ側の店舗取り違えの検出）、点検店舗の表示 |
 | `i18n-test.js` | 英語・ネパール語への切り替え |
 | `trouble-reports-test.js` | 不具合報告アプリとの連携（別プロジェクトの読み取り専用購読） |
 | `reminders-test.js` | 忘れ物の自動リマインド、期限超過の督促 |
