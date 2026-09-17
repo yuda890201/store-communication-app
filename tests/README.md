@@ -45,6 +45,7 @@ NODE_PATH=/opt/node22/lib/node_modules node tests/pin-rate-limit-test.js
 | `i18n-test.js` | 英語・ネパール語への切り替え |
 | `trouble-reports-test.js` | 不具合報告アプリとの連携（別プロジェクトの読み取り専用購読） |
 | `reminders-test.js` | 忘れ物の自動リマインド、期限超過の督促 |
+| `notebook-two-pane-test.js` | 連絡ノートの2分割表示（その日の1枚・時系列・自動リマインドの除外・過去の横スクロール・未確認のハイライト・営業日の切り替え時刻） |
 
 ## `stale/` について
 
