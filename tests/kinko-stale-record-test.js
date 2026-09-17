@@ -126,6 +126,53 @@ async function boot(browser, sink) {
   console.log('print includes the store too (expect true):',
     (await page.locator('#printArea').innerText()).includes('点検店舗: 博多住吉通り店'));
 
+  // ===== 同じ「分」に保存された記録を弾かないこと =====
+  // 金庫アプリの datetime は分までしか持たない。開いた時刻(秒あり)とそのまま比べると
+  // 同じ分の記録が必ず古い判定になり、実際に点検した結果が取り込めなくなる
+  const page2 = await boot(browser, sink);
+  await page2.click('.grid-card[onclick="openView(\'notebook\')"]');
+  await page2.waitForTimeout(300);
+  await page2.click('button[onclick="startHandoverWizard()"]');
+  await page2.waitForTimeout(400);
+  await page2.click('#handoverNoBtn');
+  await page2.waitForTimeout(150);
+  await page2.click('#handoverNextBtn');
+  await page2.waitForTimeout(300);
+  await page2.click('button[onclick="submitHandover()"]');
+  await page2.waitForTimeout(700);
+
+  // 「開く」を押した時刻の秒を、わざと遅らせる（18:56:50 に押した状況）
+  await page2.evaluate(() => {
+    markAwaitingKinkoReturn();
+    const d = new Date();
+    d.setSeconds(50, 0);
+    justPostedHandover.openedAt = d;
+  });
+  // 同じ分に保存された記録（18:56）
+  await page2.evaluate(sameMinute => {
+    const kdb = window.firebase.app('kinkoApp').firestore();
+    kdb.collection('storesConfig').doc('store-sumiyoshi').collection('records').add({
+      datetime: sameMinute, storeId: 'store-sumiyoshi', storeName: '博多住吉通り店',
+      reg1: { staff: '中村', cashDiff: '0', cashDiffDelta: 0, freeCouponDiff: '0', discCouponDiff: '0' },
+      vaultTotal: '200,000', vaultTarget: 200000, vaultDiff: '0', memo: '同じ分に保存'
+    });
+  }, localDatetime(0));
+  await page2.waitForTimeout(500);
+  await page2.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page2.waitForTimeout(1200);
+  const sameMinuteStatus = await page2.locator('#handoverKinkoImportStatus').innerText();
+  console.log('same-minute record is imported, not rejected (expect true):', sameMinuteStatus.includes('取り込みました'));
+  console.log('no false stale warning (expect false):', sameMinuteStatus.includes('見つかりません'));
+
+  // 一方、前の分の記録はちゃんと弾くこと（判定が甘くなりすぎていないか）
+  await page2.click('button[onclick="closeHandoverWizard()"]');
+  await page2.waitForTimeout(300);
+
   console.log('errors:', JSON.stringify(sink.errors));
   await browser.close();
 })();

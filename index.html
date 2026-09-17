@@ -1174,8 +1174,8 @@
     }
 
     // ===== バージョン表示 (再読み込み後に最新版を掴めたか確認できるように) =====
-    const APP_VERSION = 'v1.11.0';
-    const APP_BUILD_TIME = '2026-09-17 21:40';
+    const APP_VERSION = 'v1.11.1';
+    const APP_BUILD_TIME = '2026-09-17 22:10';
     function updateVersionDisplay() {
       const el = document.getElementById('appVersionInfo');
       if (!el) return;
@@ -3372,11 +3372,17 @@
     }
 
     // 点検したつもりでも、金庫アプリ側が別店舗を開いていると、その店舗に保存され、
-    // こちらは古い記録を拾ってしまう。黙って古い数字を引継ぎ書に載せない
+    // こちらは古い記録を拾ってしまう。黙って古い数字を引継ぎ書に載せない。
+    //
+    // 比較は「分」で行う。金庫アプリの datetime は分までしか持たない（18:56:xx は
+    // すべて "18:56"）ため、秒まで持つこちらの時刻とそのまま比べると、同じ分に
+    // 保存された記録が必ず古い判定になる。実際、18:56:30 に開いて 18:56:50 に
+    // 保存した記録が弾かれた
     function isStaleRecord(record, since) {
       const t = kinkoRecordTime(record);
       if (!t || !since) return false;
-      return t.getTime() < since.getTime();
+      const toMinute = ms => Math.floor(ms / 60000);
+      return toMinute(t.getTime()) < toMinute(since.getTime());
     }
 
     function staleRecordText(record, since) {
