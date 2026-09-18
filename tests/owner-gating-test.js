@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { check, checkIncludes, checkNotIncludes, info, report } = require('./assert');
 const fs = require('fs');
 const path = require('path');
 const PORT = process.env.PORT || 8175;
@@ -7,7 +8,7 @@ const PORT = process.env.PORT || 8175;
   const page = await browser.newPage({ viewport: { width: 390, height: 950 } });
   const errors = [];
   page.on('pageerror', err => errors.push('pageerror: ' + err.message));
-  page.on('dialog', d => { console.log('dialog:', d.message()); d.accept(); });
+  page.on('dialog', d => { info('dialog', d.message()); d.accept(); });
 
   const mockScript = fs.readFileSync(path.join(__dirname, 'firebase-mock.js'), 'utf8');
   await page.addInitScript(mockScript);
@@ -38,39 +39,40 @@ const PORT = process.env.PORT || 8175;
   await page.waitForTimeout(150);
   await page.click('button[onclick="openOwnerDrawer()"]');
   await page.waitForTimeout(200);
-  console.log('ownerDrawer open (expect false, blocked):', await page.evaluate(() => document.getElementById('ownerDrawer').classList.contains('open')));
-  console.log('ownerLoginPrompt visible (expect true):', await page.locator('#ownerLoginPrompt').isVisible());
+  check('未ログインではオーナー設定を開けない', false, await page.evaluate(() => document.getElementById('ownerDrawer').classList.contains('open')));
+  check('ownerLoginPrompt visible', true, await page.locator('#ownerLoginPrompt').isVisible());
 
   // ===== 管理者未登録の個人アカウントでログイン試行 -> 拒否される =====
   await page.fill('#ownerLoginEmail', 'staff2@example.com');
   await page.fill('#ownerLoginPassword', 'staffpass1');
   await page.click('button[onclick="doOwnerLogin()"]');
   await page.waitForTimeout(300);
-  console.log('after non-admin login attempt, ownerDrawer open (expect false):', await page.evaluate(() => document.getElementById('ownerDrawer').classList.contains('open')));
-  console.log('ownerLoginStatus text (expect 登録されていません):', await page.locator('#ownerLoginStatus').innerText());
+  check('after non-admin login attempt, ownerDrawer open', false, await page.evaluate(() => document.getElementById('ownerDrawer').classList.contains('open')));
+  checkIncludes('管理者以外は拒否される', await page.locator('#ownerLoginStatus').innerText(), '登録されていません');
 
   // ===== 正しいオーナーアカウントでログイン -> 開ける =====
   await page.fill('#ownerLoginEmail', 'owner@example.com');
   await page.fill('#ownerLoginPassword', 'ownerpass1');
   await page.click('button[onclick="doOwnerLogin()"]');
   await page.waitForTimeout(400);
-  console.log('after admin login, ownerDrawer open (expect true):', await page.evaluate(() => document.getElementById('ownerDrawer').classList.contains('open')));
-  console.log('ownerLoginPrompt hidden (expect true):', !(await page.locator('#ownerLoginPrompt').isVisible()));
-  console.log('isAdminUser (expect true):', await page.evaluate(() => isAdminUser));
+  check('after admin login, ownerDrawer open', true, await page.evaluate(() => document.getElementById('ownerDrawer').classList.contains('open')));
+  check('ownerLoginPrompt hidden', true, !(await page.locator('#ownerLoginPrompt').isVisible()));
+  check('isAdminUser', true, await page.evaluate(() => isAdminUser));
 
   // 引継ぎ項目のシード操作が管理者としてなお機能すること
   await page.click('button[onclick="seedDefaultHandoverItems()"]');
   await page.waitForTimeout(400);
   const itemCount = await page.locator('#handoverItemList .task-row-label').count();
-  console.log('handoverItems seeded while admin (expect 10):', itemCount);
+  check('handoverItems seeded while admin', 10, itemCount);
 
   // ===== 一度閉じて再度開くと、既にadminなのでプロンプトなしで直接開く =====
   await page.click('#ownerDrawer .side-drawer-close-btn');
   await page.waitForTimeout(150);
   await page.click('button[onclick="openOwnerDrawer()"]');
   await page.waitForTimeout(200);
-  console.log('re-open as already-admin, ownerDrawer open directly (expect true):', await page.evaluate(() => document.getElementById('ownerDrawer').classList.contains('open')));
+  check('re-open as already-admin, ownerDrawer open directly', true, await page.evaluate(() => document.getElementById('ownerDrawer').classList.contains('open')));
 
-  console.log('errors:', JSON.stringify(errors));
+  check('ページエラーなし', '[]', JSON.stringify(errors));
+  report();
   await browser.close();
 })();

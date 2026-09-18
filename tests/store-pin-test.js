@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { check, checkIncludes, checkNotIncludes, info, report } = require('./assert');
 const fs = require('fs');
 const path = require('path');
 const PORT = process.env.PORT || 8175;
@@ -7,7 +8,7 @@ const PORT = process.env.PORT || 8175;
   const page = await browser.newPage({ viewport: { width: 390, height: 950 } });
   const errors = [];
   page.on('pageerror', err => errors.push('pageerror: ' + err.message));
-  page.on('dialog', d => { console.log('dialog:', d.message()); d.accept(); });
+  page.on('dialog', d => { info('dialog', d.message()); d.accept(); });
 
   const mockScript = fs.readFileSync(path.join(__dirname, 'firebase-mock.js'), 'utf8');
   await page.addInitScript(mockScript);
@@ -34,9 +35,9 @@ const PORT = process.env.PORT || 8175;
   await page.waitForTimeout(400);
 
   const activeStoreAfterStaff02 = await page.evaluate(() => activeStore);
-  console.log('active store after staff02 PIN login (expect 新宿店):', activeStoreAfterStaff02);
+  check('staff02のPINで2店舗目が選ばれる', '新宿店', activeStoreAfterStaff02);
   const storeBtnText = await page.locator('#storeSwitchBtn').innerText();
-  console.log('store switch button text (expect 新宿店):', storeBtnText);
+  checkIncludes('店舗切替ボタンの表示', storeBtnText, '新宿店');
 
   // ===== ログアウトしてstaff01のPINで再ログイン -> 1店舗目が自動選択されることを期待 =====
   // (実運用では毎回ページを新規に開いてログインするため appSettings の onSnapshot が
@@ -52,7 +53,7 @@ const PORT = process.env.PORT || 8175;
   });
   await page.waitForTimeout(400);
   const activeStoreAfterStaff01 = await page.evaluate(() => activeStore);
-  console.log('active store after staff01 PIN login (expect 渋谷店):', activeStoreAfterStaff01);
+  check('staff01のPINで1店舗目が選ばれる', '渋谷店', activeStoreAfterStaff01);
 
   // ===== 間違ったPINではログイン失敗すること =====
   await page.evaluate(async () => { await firebase.auth().signOut(); });
@@ -60,15 +61,16 @@ const PORT = process.env.PORT || 8175;
   await page.fill('#pinLoginInput', 'wrongpin');
   await page.click('#pinLoginForm button');
   await page.waitForTimeout(1500);
-  console.log('wrong pin status (expect PINコードが違います):', await page.locator('#pinLoginStatus').innerText());
-  console.log('pin overlay still open after wrong pin (expect true):', await page.locator('#pinLoginOverlay').evaluate(el => el.classList.contains('open')));
+  checkIncludes('違うPINのときの文言', await page.locator('#pinLoginStatus').innerText(), 'PINコードが違います');
+  check('pin overlay still open after wrong pin', true, await page.locator('#pinLoginOverlay').evaluate(el => el.classList.contains('open')));
 
   // ===== 正しいPINで再度ログインし直せること =====
   await page.fill('#pinLoginInput', 'pinA111');
   await page.click('#pinLoginForm button');
   await page.waitForTimeout(500);
-  console.log('pin overlay closed after correct retry (expect false):', await page.locator('#pinLoginOverlay').evaluate(el => el.classList.contains('open')));
+  check('pin overlay closed after correct retry', false, await page.locator('#pinLoginOverlay').evaluate(el => el.classList.contains('open')));
 
-  console.log('errors:', JSON.stringify(errors));
+  check('ページエラーなし', '[]', JSON.stringify(errors));
+  report();
   await browser.close();
 })();

@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { check, checkIncludes, checkNotIncludes, info, report } = require('./assert');
 const fs = require('fs');
 const path = require('path');
 const PORT = process.env.PORT || 8175;
@@ -42,9 +43,9 @@ const PORT = process.env.PORT || 8175;
   await page.fill('#pinLoginInput', 'pin1234');
   await page.click('#pinLoginForm button');
   await page.waitForTimeout(500);
-  console.log('first login succeeded (pin overlay closed):', !(await page.locator('#pinLoginOverlay').evaluate(el => el.classList.contains('open'))));
-  console.log('attempts on first login (expect 1, staff@ is tried first):', await page.evaluate(() => window.__signInAttempts.length));
-  console.log('cached email saved:', await page.evaluate(() => localStorage.getItem('cached_shared_login_email')));
+  info('first login succeeded (pin overlay closed)', !(await page.locator('#pinLoginOverlay').evaluate(el => el.classList.contains('open'))));
+  check('初回ログインは staff@ の1回で済む', 1, await page.evaluate(() => window.__signInAttempts.length));
+  info('cached email saved', await page.evaluate(() => localStorage.getItem('cached_shared_login_email')));
 
   // ===== ログアウトして再ログイン (キャッシュされたメールが最初に試される) =====
   await page.evaluate(async () => { await firebase.auth().signOut(); window.__signInAttempts = []; });
@@ -53,7 +54,7 @@ const PORT = process.env.PORT || 8175;
   await page.click('#pinLoginForm button');
   await page.waitForTimeout(400);
   const attemptsSecond = await page.evaluate(() => window.__signInAttempts);
-  console.log('attempts on cached re-login (expect exactly 1 = ["staff@my-store-1234.local"]):', JSON.stringify(attemptsSecond));
+  check('キャッシュ後の再ログインも1回だけ', '["staff@my-store-1234.local"]', JSON.stringify(attemptsSecond));
 
   // ===== 間違ったPINでは「PINコードが違います」が出ること =====
   await page.evaluate(async () => { await firebase.auth().signOut(); window.__signInAttempts = []; });
@@ -61,8 +62,9 @@ const PORT = process.env.PORT || 8175;
   await page.fill('#pinLoginInput', 'totallywrong');
   await page.click('#pinLoginForm button');
   await page.waitForTimeout(1500);
-  console.log('wrong pin message (expect PINコードが違います):', await page.locator('#pinLoginStatus').innerText());
-  console.log('attempts on wrong pin (expect <= 7, cached+staff@+5 numbered, deduped):', await page.evaluate(() => window.__signInAttempts.length));
+  checkIncludes('違うPINのときの文言', await page.locator('#pinLoginStatus').innerText(), 'PINコードが違います');
+  const attemptsWrong = await page.evaluate(() => window.__signInAttempts.length);
+  check('違うPINでも試行はキャッシュ+staff@+staff01〜05の範囲（7回以下）', true, attemptsWrong <= 7, `実際 ${attemptsWrong}回`);
 
   // ===== too-many-requests エラーで即座に中断し、専用メッセージが出ること =====
   await page.evaluate(() => {
@@ -80,9 +82,10 @@ const PORT = process.env.PORT || 8175;
   await page.fill('#pinLoginInput', 'pin1234');
   await page.click('#pinLoginForm button');
   await page.waitForTimeout(300);
-  console.log('rate-limit message shown (expect true):', (await page.locator('#pinLoginStatus').innerText()).includes('一時的に制限'));
-  console.log('stopped after first too-many-requests (expect 1 attempt):', await page.evaluate(() => window.__signInAttempts.length));
+  check('rate-limit message shown', true, (await page.locator('#pinLoginStatus').innerText()).includes('一時的に制限'));
+  check('レート制限が出たら以降は試さない', 1, await page.evaluate(() => window.__signInAttempts.length));
 
-  console.log('errors:', JSON.stringify(errors));
+  check('ページエラーなし', '[]', JSON.stringify(errors));
+  report();
   await browser.close();
 })();

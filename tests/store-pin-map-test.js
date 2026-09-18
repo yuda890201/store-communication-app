@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { check, checkIncludes, checkNotIncludes, info, report } = require('./assert');
 const PORT = process.env.PORT || 8175;
 const fs = require('fs');
 const path = require('path');
@@ -48,38 +49,38 @@ const path = require('path');
   await page.waitForTimeout(500);
 
   // ===== 保存済みの並びがそのまま対応表になること =====
-  console.log('rows shown (expect 2):', await page.locator('#storePinMap .store-pin-map-row').count());
+  check('rows shown', 2, await page.locator('#storePinMap .store-pin-map-row').count());
   const row1 = await page.locator('#storePinMap .store-pin-map-row').nth(0).innerText();
   const row2 = await page.locator('#storePinMap .store-pin-map-row').nth(1).innerText();
-  console.log('row1 (expect 1行目 博多住吉通り staff01):', JSON.stringify(row1.replace(/\s+/g, ' ')));
-  console.log('row2 (expect 2行目 清川二丁目 staff02):', JSON.stringify(row2.replace(/\s+/g, ' ')));
-  console.log('row1 maps to staff01 (expect true):', row1.includes('博多住吉通り') && row1.includes('staff01@'));
-  console.log('row2 maps to staff02 (expect true):', row2.includes('清川二丁目') && row2.includes('staff02@'));
-  console.log('no overflow warning for 2 stores (expect 0):', await page.locator('#storePinMap .store-pin-map-note').count());
+  info('row1', JSON.stringify(row1.replace(/\s+/g, ' ')));
+  info('row2', JSON.stringify(row2.replace(/\s+/g, ' ')));
+  check('row1 maps to staff01', true, row1.includes('博多住吉通り') && row1.includes('staff01@'));
+  check('row2 maps to staff02', true, row2.includes('清川二丁目') && row2.includes('staff02@'));
+  check('no overflow warning for 2 stores', 0, await page.locator('#storePinMap .store-pin-map-note').count());
 
   // ===== 並べ替えると対応表もその場で変わること =====
   await page.fill('#storesInput', '清川二丁目\n博多住吉通り');
   await page.waitForTimeout(200);
   const swapped1 = await page.locator('#storePinMap .store-pin-map-row').nth(0).innerText();
-  console.log('after reorder, staff01 follows the new 1st row (expect true):', swapped1.includes('清川二丁目') && swapped1.includes('staff01@'));
+  check('after reorder, staff01 follows the new 1st row', true, swapped1.includes('清川二丁目') && swapped1.includes('staff01@'));
 
   // ===== 6行目以降は店舗別PINが無いと警告すること =====
   await page.fill('#storesInput', ['A店','B店','C店','D店','E店','F店'].join('\n'));
   await page.waitForTimeout(200);
-  console.log('rows shown for 6 stores (expect 6):', await page.locator('#storePinMap .store-pin-map-row').count());
+  check('rows shown for 6 stores', 6, await page.locator('#storePinMap .store-pin-map-row').count());
   const sixth = await page.locator('#storePinMap .store-pin-map-row').nth(5).innerText();
-  console.log('6th row says it has no store PIN (expect true):', sixth.includes('店舗別PINなし'));
-  console.log('overflow warning shown (expect 1):', await page.locator('#storePinMap .store-pin-map-note').count());
+  check('6th row says it has no store PIN', true, sixth.includes('店舗別PINなし'));
+  check('overflow warning shown', 1, await page.locator('#storePinMap .store-pin-map-note').count());
   const note = await page.locator('#storePinMap .store-pin-map-note').innerText();
-  console.log('warning names the real limit (expect true):', note.includes('staff06@') && note.includes('staff05@'));
+  check('warning names the real limit', true, note.includes('staff06@') && note.includes('staff05@'));
   // 5行目までは従来どおり出ること
   const fifth = await page.locator('#storePinMap .store-pin-map-row').nth(4).innerText();
-  console.log('5th row still has a PIN (expect true):', fifth.includes('staff05@'));
+  check('5th row still has a PIN', true, fifth.includes('staff05@'));
 
   // ===== 空にしたら何も出さないこと =====
   await page.fill('#storesInput', '');
   await page.waitForTimeout(200);
-  console.log('nothing shown when empty (expect 0):', await page.locator('#storePinMap .store-pin-map-row').count());
+  check('nothing shown when empty', 0, await page.locator('#storePinMap .store-pin-map-row').count());
 
   // ===== 実際のログインと表示が食い違わないこと =====
   // 表示は staff01→1行目。実際に staff01 でログインして同じ店舗が選ばれるか確かめる
@@ -95,8 +96,9 @@ const path = require('path');
   await page.click('#pinLoginForm button');
   await page.waitForTimeout(700);
   const active = await page.evaluate(() => window.localStorage.getItem('active_store'));
-  console.log('staff01 actually selects the 1st row (expect 博多住吉通り):', active);
+  check('staff01のPINで実際に1行目の店舗が選ばれる', '博多住吉通り', active);
 
-  console.log('errors:', JSON.stringify(errors));
+  check('ページエラーなし', '[]', JSON.stringify(errors));
+  report();
   await browser.close();
 })();

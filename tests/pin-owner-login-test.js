@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { check, checkIncludes, checkNotIncludes, info, report } = require('./assert');
 const fs = require('fs');
 const path = require('path');
 const PORT = process.env.PORT || 8175;
@@ -22,41 +23,41 @@ const PORT = process.env.PORT || 8175;
   await page.goto(`http://localhost:${PORT}/index.html`);
   await page.waitForTimeout(400);
 
-  console.log('PIN overlay shown on load (expect true):', await page.evaluate(() => document.getElementById('pinLoginOverlay').classList.contains('open')));
+  check('PIN overlay shown on load', true, await page.evaluate(() => document.getElementById('pinLoginOverlay').classList.contains('open')));
 
   // ===== PINが分からない状態を再現 =====
   await page.fill('#pinLoginInput', 'wrongpin');
   await page.click('#pinLoginForm button');
   await page.waitForTimeout(1200);
-  console.log('wrong pin message (expect PINコードが違います):', await page.locator('#pinLoginStatus').innerText());
-  console.log('still locked out on PIN screen (expect true):', await page.evaluate(() => document.getElementById('pinLoginOverlay').classList.contains('open')));
+  checkIncludes('違うPINのときの文言', await page.locator('#pinLoginStatus').innerText(), 'PINコードが違います');
+  check('still locked out on PIN screen', true, await page.evaluate(() => document.getElementById('pinLoginOverlay').classList.contains('open')));
 
   // ===== オーナーとしてログインできること =====
-  console.log('owner login box hidden by default (expect false):', await page.locator('#pinOwnerLoginBox').isVisible());
+  check('owner login box hidden by default', false, await page.locator('#pinOwnerLoginBox').isVisible());
   await page.click('button[onclick="togglePinOwnerLogin()"]');
   await page.waitForTimeout(150);
-  console.log('owner login box revealed (expect true):', await page.locator('#pinOwnerLoginBox').isVisible());
+  check('owner login box revealed', true, await page.locator('#pinOwnerLoginBox').isVisible());
 
   // 間違ったパスワードではエラーが出ること
   await page.fill('#pinOwnerEmail', 'owner@example.com');
   await page.fill('#pinOwnerPassword', 'wrong-pass');
   await page.click('button[onclick="doPinOwnerLogin()"]');
   await page.waitForTimeout(400);
-  console.log('owner wrong password shows error (expect true):', (await page.locator('#pinOwnerLoginStatus').innerText()).includes('ログインに失敗'));
-  console.log('still locked out after wrong owner password (expect true):', await page.evaluate(() => document.getElementById('pinLoginOverlay').classList.contains('open')));
+  check('owner wrong password shows error', true, (await page.locator('#pinOwnerLoginStatus').innerText()).includes('ログインに失敗'));
+  check('still locked out after wrong owner password', true, await page.evaluate(() => document.getElementById('pinLoginOverlay').classList.contains('open')));
 
   // 正しいオーナー認証情報でログインできること
   await page.fill('#pinOwnerEmail', 'owner@example.com');
   await page.fill('#pinOwnerPassword', 'owner-pass1');
   await page.click('button[onclick="doPinOwnerLogin()"]');
   await page.waitForTimeout(600);
-  console.log('PIN overlay closed after owner login (expect false):', await page.evaluate(() => document.getElementById('pinLoginOverlay').classList.contains('open')));
-  console.log('db connected (expect ✅ 接続済み):', await page.locator('#dbStatusHome').innerText());
+  check('PIN overlay closed after owner login', false, await page.evaluate(() => document.getElementById('pinLoginOverlay').classList.contains('open')));
+  check('接続表示', '✅ 接続済み', await page.locator('#dbStatusHome').innerText());
 
   // ログイン後に⚙️設定が開けること
   await page.click('.home-topbar .settings-btn:has-text("⚙️")');
   await page.waitForTimeout(250);
-  console.log('settings drawer reachable after owner login (expect true):', await page.evaluate(() => document.getElementById('sideDrawer').classList.contains('open')));
+  check('settings drawer reachable after owner login', true, await page.evaluate(() => document.getElementById('sideDrawer').classList.contains('open')));
 
   // 通常のPINログインが壊れていないことも確認
   await page.evaluate(async () => { await firebase.auth().signOut(); });
@@ -64,8 +65,9 @@ const PORT = process.env.PORT || 8175;
   await page.fill('#pinLoginInput', 'pin1234');
   await page.click('#pinLoginForm button');
   await page.waitForTimeout(600);
-  console.log('normal PIN login still works (expect false = overlay closed):', await page.evaluate(() => document.getElementById('pinLoginOverlay').classList.contains('open')));
+  check('normal PIN login still works', false, await page.evaluate(() => document.getElementById('pinLoginOverlay').classList.contains('open')));
 
-  console.log('errors:', JSON.stringify(errors));
+  check('ページエラーなし', '[]', JSON.stringify(errors));
+  report();
   await browser.close();
 })();
