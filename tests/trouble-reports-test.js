@@ -122,7 +122,7 @@ const PORT = process.env.PORT || 8175;
   // 未解決件数バッジ (未対応1件 + 完了1件 => 未解決1件)
   await page.click('[data-view="troublereports"] .back-btn');
   await page.waitForTimeout(200);
-  check('home badge unresolved count', 1, await page.locator('#badge-troublereports').innerText());
+  check('ホームの未対応バッジ件数', 1, Number(await page.locator('#badge-troublereports').innerText()));
 
   // ===== 写真の遅延読み込み (別コレクションから) =====
   await page.click('.grid-card[onclick="openView(\'troublereports\')"]');
