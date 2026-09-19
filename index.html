@@ -1080,6 +1080,9 @@
         <button class="btn-secondary" onclick="saveShiftStoreMap()">💾 保存</button>
         <div id="shiftStoreMapStatus" class="status"></div>
         <div id="shiftUnknownStores" class="status"></div>
+
+        <p style="font-size: 0.8rem; color: #666; margin-top: 14px;">連携の状態です。ヘッダーは「募集が無い」ときも「つながっていない」ときも何も出さないため、その区別はここで確認してください。</p>
+        <div id="shiftConnectionStatus" class="status"></div>
       </div>
     </details>
 
@@ -1262,8 +1265,8 @@
     }
 
     // ===== バージョン表示 (再読み込み後に最新版を掴めたか確認できるように) =====
-    const APP_VERSION = 'v1.13.0';
-    const APP_BUILD_TIME = '2026-09-19 08:00';
+    const APP_VERSION = 'v1.14.0';
+    const APP_BUILD_TIME = '2026-09-19 10:30';
     function updateVersionDisplay() {
       const el = document.getElementById('appVersionInfo');
       if (!el) return;
@@ -3749,9 +3752,61 @@
       }).join('');
     }
 
+    // 届いた募集のうち、なぜ何件が表示されていないのかを数える。
+    // ヘッダーは「募集が無い」ときも「連携が壊れている」ときも何も出さない設計なので、
+    // 画面からは区別が付かない。オーナー設定で内訳が読めるようにする
+    function helpPostingCounts() {
+      const today = todayDateStr();
+      const cutoff = Date.now() - HELP_FILLED_VISIBLE_MS;
+      const counts = { total: 0, visible: 0, pastDate: 0, filledExpired: 0, filledNoDate: 0 };
+      (helpPostings || []).forEach(p => {
+        counts.total++;
+        const date = String(p.dateStr || '').trim();
+        if (date && date < today) { counts.pastDate++; return; }
+        if (p.status === 'filled') {
+          const at = helpFilledAtMs(p);
+          if (isNaN(at)) { counts.filledNoDate++; return; }
+          if (at < cutoff) { counts.filledExpired++; return; }
+        }
+        counts.visible++;
+      });
+      return counts;
+    }
+
+    // 連携の状態をオーナー設定に出す。
+    // 「設定していない」「つながっていない」「つながっているが表示対象が無い」は
+    // ヘッダー上では同じ（どれも何も出ない）ため、ここでしか見分けられない
+    function renderShiftConnectionStatus() {
+      const el = document.getElementById('shiftConnectionStatus');
+      if (!el) return;
+      if (!shiftConfig) { el.innerText = '未設定です。上のJSONを登録すると読み取りを始めます。'; return; }
+      if (helpPostingsError) {
+        el.innerText = '⚠️ 接続できていません: ' + helpPostingsError
+          + '\n（このときヘッダーには何も出しません。「募集0件」とは区別しています）';
+        return;
+      }
+      if (!helpPostings) { el.innerText = '接続中です…'; return; }
+
+      const c = helpPostingCounts();
+      const reasons = [];
+      if (c.pastDate) reasons.push(`過去日 ${c.pastDate}件`);
+      if (c.filledExpired) reasons.push(`埋まってから48時間経過 ${c.filledExpired}件`);
+      if (c.filledNoDate) reasons.push(`確定日時が無い ${c.filledNoDate}件`);
+      let text = `✅ 接続できています。届いている募集 ${c.total}件 ／ ヘッダーに表示中 ${c.visible}件`;
+      if (reasons.length) text += `\n（除外: ${reasons.join('・')}）`;
+      if (c.total && !c.visible) {
+        text += '\nヘッダーに何も出ないのは、届いた募集がすべて表示対象外のためです（接続の問題ではありません）。';
+      }
+      if (!c.total) {
+        text += '\nいま募集は1件もありません。';
+      }
+      el.innerText = text;
+    }
+
     // 届いている店舗識別子のうち、対応付けも表示名も無いものをオーナー設定に出す。
     // 「fm71661」のままスタッフに見せないための手掛かりにする
     function renderShiftUnknownStores() {
+      renderShiftConnectionStatus();
       const el = document.getElementById('shiftUnknownStores');
       if (!el) return;
       if (!helpPostings || !helpPostings.length) { el.innerText = ''; return; }
@@ -3803,6 +3858,7 @@
         helpPostings = null;
         renderHelpBanner();
         renderHelpList();
+        renderShiftConnectionStatus();
       };
       try {
         const app = firebase.apps.find(a => a.name === 'shiftApp')
