@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { check, checkIncludes, info, report } = require('./assert');
 const fs = require('fs');
 const path = require('path');
 const PORT = process.env.PORT || 8175;
@@ -37,6 +38,10 @@ async function setupPageMock(page, label) {
   await page.addInitScript(mockScript);
   await page.addInitScript(() => {
     localStorage.setItem('firebase_config', JSON.stringify({ apiKey: 'mock', projectId: 'mock' }));
+    // アプリ全体がPINログインで保護されている。このテストはPIN導入前に書かれたもの
+    window.__mockUsers = {
+      'staff@mock.local': { password: 'pin1234', user: { uid: 'shared-uid', isAnonymous: false, email: 'staff@mock.local', displayName: null } }
+    };
   });
   page.on('pageerror', err => console.log(`[${label} pageerror]`, err.message));
   page.on('console', msg => console.log(`[${label} console:${msg.type()}]`, msg.text()));
@@ -63,8 +68,15 @@ async function setupPageMock(page, label) {
 
   await staffPage.goto(`http://localhost:${PORT}/index.html`);
   await adminPage.goto(`http://localhost:${PORT}/index.html`);
-  await staffPage.waitForTimeout(300);
-  await adminPage.waitForTimeout(300);
+  await staffPage.waitForTimeout(400);
+  await adminPage.waitForTimeout(400);
+
+  // 2端末ともPINでログインする
+  for (const p of [staffPage, adminPage]) {
+    await p.fill('#pinLoginInput', 'pin1234');
+    await p.click('#pinLoginForm button');
+    await p.waitForTimeout(400);
+  }
 
   // seed settings directly through the shared store
   sharedDocs['appSettings/general'] = { staffInviteCode: 'test123', adminEmails: ['admin@example.com'] };
@@ -99,17 +111,18 @@ async function setupPageMock(page, label) {
   await staffPage.click('button[onclick="startCallFromThread()"]');
   await staffPage.waitForTimeout(800);
   await staffPage.screenshot({ path: path.join(__dirname, 'call03-staff-calling.png') });
-  console.log('callStartStatus text:', await staffPage.locator('#callStartStatus').innerText());
-  console.log('shared store keys:', Object.keys(sharedDocs));
-  console.log('shared store dump:', JSON.stringify(sharedDocs, null, 2));
+  info('callStartStatus text', await staffPage.locator('#callStartStatus').innerText());
+  info('shared store keys', Object.keys(sharedDocs));
+  // 中身の全文（SDPを含む）は長すぎて読めないため出さない。
+  // 追う必要があるときは window.__mockDebug = true にしてください
 
   // admin should see incoming call banner
   await adminPage.waitForTimeout(500);
   await adminPage.screenshot({ path: path.join(__dirname, 'call04-admin-incoming.png') });
   const bannerVisible = await adminPage.locator('#incomingCallOverlay').evaluate(el => el.classList.contains('open'));
-  console.log('admin sees incoming call banner:', bannerVisible);
+  check('管理者に着信が出る', true, bannerVisible);
   const callerNameText = await adminPage.locator('#incomingCallFrom').innerText();
-  console.log('incoming call caller name shown:', callerNameText);
+  checkIncludes('着信に発信者の名前が出る', callerNameText, '佐藤');
 
   if (!bannerVisible) {
     console.log('ABORTING further steps: banner never appeared');
@@ -126,15 +139,17 @@ async function setupPageMock(page, label) {
 
   const staffCallStatus = await staffPage.locator('#callStatusText').innerText();
   const adminCallStatus = await adminPage.locator('#callStatusText').innerText();
-  console.log('staff call status text:', staffCallStatus);
-  console.log('admin call status text:', adminCallStatus);
+  checkIncludes('発信側が通話中になる', staffCallStatus, '通話中');
+  checkIncludes('着信側も通話中になる', adminCallStatus, '通話中');
 
   const staffRemoteHasStream = await staffPage.locator('#remoteVideo').evaluate(el => !!el.srcObject);
   const adminRemoteHasStream = await adminPage.locator('#remoteVideo').evaluate(el => !!el.srcObject);
   const staffLocalHasStream = await staffPage.locator('#localVideo').evaluate(el => !!el.srcObject);
   const adminLocalHasStream = await adminPage.locator('#localVideo').evaluate(el => !!el.srcObject);
-  console.log('staff remoteVideo has stream:', staffRemoteHasStream, '| localVideo has stream:', staffLocalHasStream);
-  console.log('admin remoteVideo has stream:', adminRemoteHasStream, '| localVideo has stream:', adminLocalHasStream);
+  check('発信側に相手の映像が届く', true, staffRemoteHasStream);
+  check('発信側に自分の映像が出る', true, staffLocalHasStream);
+  check('着信側に相手の映像が届く', true, adminRemoteHasStream);
+  check('着信側に自分の映像が出る', true, adminLocalHasStream);
 
   // admin hangs up
   await adminPage.click('button[onclick="hangUpCall()"]');
@@ -145,8 +160,9 @@ async function setupPageMock(page, label) {
 
   const staffOverlayOpenAfterHangup = await staffPage.locator('#callOverlay').evaluate(el => el.classList.contains('open'));
   const adminOverlayOpenAfterHangup = await adminPage.locator('#callOverlay').evaluate(el => el.classList.contains('open'));
-  console.log('staff call overlay still open after remote hangup:', staffOverlayOpenAfterHangup);
-  console.log('admin call overlay still open after own hangup:', adminOverlayOpenAfterHangup);
+  check('相手が切ると発信側の通話画面も閉じる', false, staffOverlayOpenAfterHangup);
+  check('自分で切ると通話画面が閉じる', false, adminOverlayOpenAfterHangup);
 
+  report();
   await browser.close();
 })();
