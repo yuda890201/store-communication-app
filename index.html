@@ -93,6 +93,7 @@
     .help-tag.pending { background: #fff3cd; color: #8a6d3b; }
     .help-tag.filled { background: #e3f4e6; color: #2e7d4f; }
     .help-tag.mine { background: #e6efff; color: #2b5fa8; }
+    .help-tag.shareful { background: #efe6ff; color: #6b3fa0; }
 
     [data-view] { display: none; }
     [data-view].active-view { display: block; }
@@ -1265,8 +1266,8 @@
     }
 
     // ===== バージョン表示 (再読み込み後に最新版を掴めたか確認できるように) =====
-    const APP_VERSION = 'v1.14.0';
-    const APP_BUILD_TIME = '2026-09-19 10:30';
+    const APP_VERSION = 'v1.15.0';
+    const APP_BUILD_TIME = '2026-09-19 12:00';
     function updateVersionDisplay() {
       const el = document.getElementById('appVersionInfo');
       if (!el) return;
@@ -1466,6 +1467,7 @@
         'help.filled': 'Filled',
         'help.allFilled': 'All help requests have been filled',
         'help.urgent': 'Urgent',
+        'help.shareful': 'Also posted externally',
         'help.ownStore': 'Your store',
         'help.empty': 'No open requests right now.',
         'help.alreadyFilled': 'This request has already been filled.',
@@ -1619,6 +1621,7 @@
         'help.filled': 'भरियो',
         'help.allFilled': 'सबै सहयोग अनुरोध भरिए',
         'help.urgent': 'जरुरी',
+        'help.shareful': 'बाहिर पनि पोस्ट गरिएको',
         'help.ownStore': 'आफ्नै पसल',
         'help.empty': 'अहिले कुनै अनुरोध छैन।',
         'help.alreadyFilled': 'यो अनुरोध पहिले नै भरिएको छ।',
@@ -3743,6 +3746,9 @@
         const tags = [];
         if (own && label === own) tags.push(`<span class="help-tag mine">📍 ${escapeHtml(t('help.ownStore') || '自店')}</span>`);
         if (p.isUrgent) tags.push(`<span class="help-tag urgent">⚡ ${escapeHtml(t('help.urgent') || '急募')}</span>`);
+        // シェアフル（外部の求人サービス）にも出ている枠。埋まったという意味ではなく、
+        // status は open のまま。社内からの立候補は引き続き受け付ける
+        if (p.postedToShareful) tags.push(`<span class="help-tag shareful">📣 ${escapeHtml(t('help.shareful') || '外部募集中')}</span>`);
         if (p.status === 'pending') tags.push(`<span class="help-tag pending">⏳ ${escapeHtml(t('help.pending') || '承認待ち')}</span>`);
         if (p.status === 'filled') tags.push(`<span class="help-tag filled">✅ ${escapeHtml(t('help.filled') || '埋まりました')}</span>`);
         const time = formatHelpTime(p);
@@ -3811,16 +3817,28 @@
       if (!el) return;
       if (!helpPostings || !helpPostings.length) { el.innerText = ''; return; }
       const keys = [...new Set(helpPostings.map(shiftStoreKeyOf).filter(Boolean))];
-      // 先方の「(表示名未設定)」を名前として数えないこと。数えてしまうと
-      // 「すべて名前が付いています」と出て、気づく手段ごと無くなる
-      const unnamed = keys.filter(k => {
-        if (shiftStoreMap && shiftStoreMap[k]) return false;
-        return !helpPostings.some(p => shiftStoreKeyOf(p) === k && shiftGivenLabel(p));
+      const own = (activeStore || '').trim();
+
+      // 識別子だけを並べても、どれがどの店舗か分からず対応付けを書けない。
+      // 先方の表示名とこちらでの表示を並べて出す
+      const lines = keys.map(k => {
+        const sample = helpPostings.find(p => shiftStoreKeyOf(p) === k) || {};
+        const given = shiftGivenLabel(sample);
+        const mapped = (shiftStoreMap && shiftStoreMap[k]) || '';
+        const shown = shiftStoreLabel(sample);
+        let note = '';
+        if (!given && !mapped) {
+          note = '　← 店舗名が分かりません。対応付けを登録してください';
+        } else if (mapped) {
+          note = '　（対応付け済み）';
+        } else if (own && given !== own) {
+          // 表示名がこちらの店舗名と違うと「📍 自店」の印が出ない。
+          // 実際に先方が「福岡清川二丁目店」、こちらが「清川二丁目」で食い違った
+          note = `　← このアプリの店舗名（${own} など）と違います。自店ならば対応付けの登録が要ります`;
+        }
+        return `${k} → ${shown}${note}`;
       });
-      el.innerText = unnamed.length
-        ? `店舗名が分からない識別子があります: ${unnamed.join('、')}\n`
-          + 'シフト管理アプリ側で表示名が設定されていないか、対応付けが未登録です。'
-        : `届いている識別子（${keys.join('、')}）はすべて店舗名が分かります`;
+      el.innerText = '届いている店舗:\n' + lines.join('\n');
     }
 
     function openHelpList() {

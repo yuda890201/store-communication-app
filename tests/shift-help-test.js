@@ -23,6 +23,10 @@ const STORE_A = '3f2a9c1e-0000-4000-8000-000000000001';
 const STORE_B = '7b41d0aa-0000-4000-8000-000000000002';
 // オーナーが表示名を設定するまで先方が入れてくる文字列
 const LABEL_UNSET = '(表示名未設定)';
+// 先方の店舗名がこちらの店舗名と食い違う実例。
+// 先方「福岡清川二丁目店」／こちら「清川二丁目」で、文字列が違うため自店と見なせない
+const LABEL_A_DIFFERENT = '福岡博多住吉通り店';
+const LABEL_B_DIFFERENT = '福岡清川二丁目店';
 
 const SHIFT_CONFIG = {
   apiKey: 'mock-shift-api-key',
@@ -164,12 +168,19 @@ async function bootStaffSession(browser, { shiftConfig }) {
   // 「(表示名未設定)」を名前として数えると、気づく手段ごと無くなる
   const unknownText = await page.locator('#shiftUnknownStores').innerText();
   check('未設定の合図を「名前あり」と数えない', true, unknownText.includes(STORE_A) && unknownText.includes(STORE_B));
+  // 識別子だけを並べても、どのUUIDがどの店舗か分からず対応付けを書けない。
+  // 先方の表示名とこちらでの表示を並べて出すこと
+  checkIncludes('識別子とこちらでの表示を並べて出す', unknownText, `${STORE_A} →`);
+  checkIncludes('名前が分からないものには何をすればよいか出す', unknownText, '対応付けを登録してください');
   info('オーナー設定の表示', unknownText.replace(/\n/g, ' | '));
   await page.fill('#shiftStoreMapInput', `${STORE_A} = 博多住吉通り\n${STORE_B} = 清川二丁目`);
   await page.click('button[onclick="saveShiftStoreMap()"]');
   await page.waitForTimeout(400);
   checkIncludes('対応付けの保存', await page.locator('#shiftStoreMapStatus').innerText(), '2件');
-  checkIncludes('保存後はすべて店舗名が分かる', await page.locator('#shiftUnknownStores').innerText(), 'すべて店舗名が分かります');
+  const mappedText = await page.locator('#shiftUnknownStores').innerText();
+  checkIncludes('保存後は対応付け済みと分かる', mappedText, '（対応付け済み）');
+  checkIncludes('保存後は対応付けた店舗名が出る', mappedText, '清川二丁目');
+  checkNotIncludes('保存後は「登録してください」を出さない', mappedText, '対応付けを登録してください');
 
   await page.click('#ownerDrawerCloseBtn').catch(() => {});
   await page.waitForTimeout(150);
@@ -257,6 +268,75 @@ async function bootStaffSession(browser, { shiftConfig }) {
 
   check('ページエラーなし', '[]', JSON.stringify(errors));
   await page.close();
+
+  // ---------- 先方の店舗名がこちらと違うとき ----------
+  // 先方が「福岡清川二丁目店」、こちらが「清川二丁目」のように文字列が違うと、
+  // 名前は付いているのに「📍 自店」の印が出ない。実際に本番でこれを踏んだ。
+  // 画面から原因が分からないので、オーナー設定で読めるようにしてある
+  const diff = await bootStaffSession(browser, { shiftConfig: SHIFT_CONFIG });
+  await diff.page.evaluate(rows => {
+    const sdb = window.firebase.app('shiftApp').firestore();
+    rows.forEach(r => sdb.collection('helpPostingsPublic').doc(r.id).set(r.data));
+  }, [
+    // STORE_A はこの端末の店舗（博多住吉通り）だが、先方の表示名は別文字列
+    { id: 'diff-1', data: { storeKey: STORE_A, storeLabel: LABEL_A_DIFFERENT, dateStr: IN_3_DAYS, slotName: '夜勤', startTime: '22:00', endTime: '08:00', isUrgent: true, status: 'open', postedToShareful: true } },
+    { id: 'diff-2', data: { storeKey: STORE_B, storeLabel: LABEL_B_DIFFERENT, dateStr: IN_5_DAYS, slotName: '朝勤', startTime: '09:00', endTime: '17:00', isUrgent: false, status: 'open' } }
+  ]);
+  await diff.page.waitForTimeout(400);
+
+  await diff.page.click('#helpBanner');
+  await diff.page.waitForTimeout(250);
+  const diffList = (await diff.page.locator('#helpListBody').innerText()).replace(/\n/g, ' | ');
+  info('食い違いのある一覧', diffList);
+  checkIncludes('先方が付けた店舗名はそのまま出す', diffList, LABEL_A_DIFFERENT);
+  check('店舗名が食い違うと自店の印は出ない', false, diffList.includes('自店'));
+
+  // ---------- シェアフル（外部の求人サービス）にも出ている枠 ----------
+  // postedToShareful が true でも status は open のまま。社内からの立候補は
+  // 引き続き受け付けるので、「埋まった」と読めてはいけない
+  checkIncludes('外部にも出ている枠に印を付ける', diffList, '外部募集中');
+  check('印が付くのは postedToShareful の枠だけ', 1, (diffList.match(/外部募集中/g) || []).length);
+  const diffBanner = (await diff.page.locator('#helpBanner').innerText()).replace(/\n/g, ' ');
+  checkIncludes('外部にも出ていても募集中として数える', diffBanner, 'ヘルプ募集 2件');
+  checkNotIncludes('外部にも出ているだけで「埋まりました」と言わない', diffBanner, '埋まりました');
+  check('外部にも出ている枠は応募で開ける', true, await diff.page.evaluate(async () => {
+    document.querySelector('.help-row:not(.filled)').click();
+    await new Promise(r => setTimeout(r, 100));
+    return window.__opened.length === 1;
+  }));
+
+  // ---------- 対応付けを登録すれば自店の印が出る ----------
+  await diff.page.evaluate(() => { closeHelpList(); });
+  await diff.page.waitForTimeout(150);
+  await diff.page.click('.active-view .settings-btn:has-text("⚙️")');
+  await diff.page.waitForTimeout(150);
+  await diff.page.click('button[onclick="openOwnerDrawer()"]');
+  await diff.page.waitForTimeout(150);
+  await diff.page.fill('#ownerLoginEmail', 'owner@test.example.com');
+  await diff.page.fill('#ownerLoginPassword', 'owner-pass1');
+  await diff.page.click('button[onclick="doOwnerLogin()"]');
+  await diff.page.waitForTimeout(400);
+  await diff.page.click('summary:has-text("🆘 シフト管理アプリ連携設定")');
+  await diff.page.waitForTimeout(150);
+  const diffUnknown = await diff.page.locator('#shiftUnknownStores').innerText();
+  info('食い違い時のオーナー設定の表示', diffUnknown.replace(/\n/g, ' | '));
+  checkIncludes('食い違っていることを知らせる', diffUnknown, '違います');
+  checkIncludes('先方の表示名を出して対応付けを書けるようにする', diffUnknown, LABEL_A_DIFFERENT);
+
+  await diff.page.fill('#shiftStoreMapInput', `${STORE_A} = 博多住吉通り`);
+  await diff.page.click('button[onclick="saveShiftStoreMap()"]');
+  await diff.page.waitForTimeout(400);
+  await diff.page.evaluate(() => { closeOwnerDrawer && closeOwnerDrawer(); closeSideDrawer && closeSideDrawer(); });
+  await diff.page.waitForTimeout(150);
+  await diff.page.click('#helpBanner');
+  await diff.page.waitForTimeout(250);
+  const diffFixed = (await diff.page.locator('#helpListBody').innerText()).replace(/\n/g, ' | ');
+  check('対応付けを登録すると自店の印が出る', true, diffFixed.includes('自店'));
+  checkIncludes('対応付けた側はこちらの店舗名で出す', diffFixed, '博多住吉通り');
+  checkNotIncludes('対応付けた側に先方の表示名は残さない', diffFixed, LABEL_A_DIFFERENT);
+  checkIncludes('対応付けていない店舗は先方の表示名のまま', diffFixed, LABEL_B_DIFFERENT);
+  check('食い違いの画面でページエラーなし', '[]', JSON.stringify(diff.errors));
+  await diff.page.close();
 
   // ---------- 接続に失敗したとき ----------
   const broken = await bootStaffSession(browser, {
