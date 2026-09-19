@@ -1,6 +1,7 @@
 // 連絡ノートの2分割表示（上＝その日の1枚 / 下＝過去を横スクロール）の確認。
 // 日時は必ず Date.now() からの相対で作る（固定文字列は実行日によって意味が変わる）
 const { chromium } = require('playwright');
+const { check, checkIncludes, checkNotIncludes, info, report } = require('./assert');
 const fs = require('fs');
 const path = require('path');
 const PORT = process.env.PORT || 8175;
@@ -53,36 +54,30 @@ const hoursAgo = h => new Date(Date.now() - h * 3600000);
   await page.waitForTimeout(300);
 
   const sheet = await page.locator('#latestHandoverContent').innerText();
-  console.log('その日の1枚の中身:', sheet.replace(/\n/g, ' | '));
-  console.log('引継ぎと自由記入が同じ1枚に並ぶ (expect true):',
-    sheet.includes('店頭受取荷物') && sheet.includes('業者が来店'));
-  console.log('時系列で並ぶ（引継ぎが先） (expect true):',
-    sheet.indexOf('店頭受取荷物') < sheet.indexOf('業者が来店'));
-  console.log('投稿者と時刻が行ごとに出る (expect true):', sheet.includes('ゆだ') && sheet.includes('ケン'));
-  console.log('自動リマインドは1枚に混ぜない (expect false):', sheet.includes('保管期限'));
-  console.log('前日ぶんは上の1枚に入らない (expect false):', sheet.includes('レジ点検'));
-  console.log('行数は自動リマインドを除いた2行 (expect 2):',
-    await page.locator('#latestHandoverContent .sheet-line').count());
+  info('その日の1枚の中身', sheet.replace(/\n/g, ' | '));
+  check('引継ぎと自由記入が同じ1枚に並ぶ', true, sheet.includes('店頭受取荷物') && sheet.includes('業者が来店'));
+  check('時系列で並ぶ（引継ぎが先）', true, sheet.indexOf('店頭受取荷物') < sheet.indexOf('業者が来店'));
+  check('投稿者と時刻が行ごとに出る', true, sheet.includes('ゆだ') && sheet.includes('ケン'));
+  check('自動リマインドは1枚に混ぜない', false, sheet.includes('保管期限'));
+  check('前日ぶんは上の1枚に入らない', false, sheet.includes('レジ点検'));
+  check('行数は自動リマインドを除いた2行', 2, await page.locator('#latestHandoverContent .sheet-line').count());
 
   // 履歴には今までどおり残る（リマインドを消してはいない）
   const history = await page.locator('#notebookList').innerText();
-  console.log('自動リマインドは履歴には残る (expect true):', history.includes('保管期限'));
+  check('自動リマインドは履歴には残る', true, history.includes('保管期限'));
 
   // 下部：過去の引継ぎ
-  console.log('過去の引継ぎカードが出る (expect 1):', await page.locator('#pastDayScroller .day-card').count());
+  check('過去の引継ぎカードが出る', 1, await page.locator('#pastDayScroller .day-card').count());
   const past = await page.locator('#pastDayScroller').innerText();
-  console.log('過去カードの中身:', past.replace(/\n/g, ' | '));
-  console.log('前日の引継ぎが下に出る (expect true):', past.includes('レジ点検'));
-  console.log('横スクロールできる (expect true):', await page.locator('#pastDayScroller').evaluate(
+  info('過去カードの中身', past.replace(/\n/g, ' | '));
+  check('前日の引継ぎが下に出る', true, past.includes('レジ点検'));
+  check('横スクロールできる', true, await page.locator('#pastDayScroller').evaluate(
     el => getComputedStyle(el).overflowX === 'auto' && getComputedStyle(el).display === 'flex'));
 
   // 未確認のハイライト
-  console.log('未確認ならその日の1枚が目立つ (expect true):',
-    await page.locator('#todaySheetCard').evaluate(el => el.classList.contains('unread')));
-  console.log('未確認のしるしが出る (expect true):',
-    (await page.locator('#todaySheetChip').innerText()).includes('未確認'));
-  console.log('過去カードも未確認なら目立つ (expect true):',
-    await page.locator('#pastDayScroller .day-card').first().evaluate(el => el.classList.contains('unread')));
+  check('未確認ならその日の1枚が目立つ', true, await page.locator('#todaySheetCard').evaluate(el => el.classList.contains('unread')));
+  check('未確認のしるしが出る', true, (await page.locator('#todaySheetChip').innerText()).includes('未確認'));
+  check('過去カードも未確認なら目立つ', true, await page.locator('#pastDayScroller .day-card').first().evaluate(el => el.classList.contains('unread')));
 
   // 確認するとハイライトが外れる
   await page.evaluate(() => {
@@ -92,36 +87,36 @@ const hoursAgo = h => new Date(Date.now() - h * 3600000);
     });
   });
   await page.waitForTimeout(300);
-  console.log('確認後はハイライトが外れる (expect false):',
-    await page.locator('#todaySheetCard').evaluate(el => el.classList.contains('unread')));
-  console.log('確認した人数が出る (expect ✅ 1):', (await page.locator('#todaySheetChip').innerText()).trim());
+  check('確認後はハイライトが外れる', false, await page.locator('#todaySheetCard').evaluate(el => el.classList.contains('unread')));
+  checkIncludes('確認した人数が出る', (await page.locator('#todaySheetChip').innerText()).trim(), '1');
 
   // 営業日の切り替え時刻。夜勤が24時をまたいでも1枚に収まることを直接確かめる。
   // 「今が何時か」に依存しないよう、日付をまたぐ2点のキーを直接比べる
-  console.log('既定の切り替え時刻 (expect 5):', await page.evaluate(() => notebookDayStartHour));
+  check('既定の切り替え時刻', 5, await page.evaluate(() => notebookDayStartHour));
   const straddle = await page.evaluate(() => {
     const base = new Date();
     base.setHours(23, 50, 0, 0);              // 夜勤の途中
     const after = new Date(base.getTime() + 100 * 60000); // 100分後 = 翌 1:30
     return { before: businessDayKey(base), after: businessDayKey(after) };
   });
-  console.log('朝5時区切りなら23:50と翌1:30が同じ営業日 (expect true):',
+  check('朝5時区切りなら23:50と翌1:30が同じ営業日', true,
     straddle.before === straddle.after, `(${straddle.before} / ${straddle.after})`);
 
   await page.evaluate(() => {
     window.firebase.firestore().collection('appSettings').doc('general').set({ notebookDayStartHour: 0 }, { merge: true });
   });
   await page.waitForTimeout(350);
-  console.log('設定が効く (expect 0):', await page.evaluate(() => notebookDayStartHour));
+  check('設定が効く', 0, await page.evaluate(() => notebookDayStartHour));
   const split = await page.evaluate(() => {
     const base = new Date();
     base.setHours(23, 50, 0, 0);
     const after = new Date(base.getTime() + 100 * 60000);
     return { before: businessDayKey(base), after: businessDayKey(after) };
   });
-  console.log('0時区切りにすると同じ夜勤が2枚に割れる (expect false):',
+  check('0時区切りにすると同じ夜勤が2枚に割れる', false,
     split.before === split.after, `(${split.before} / ${split.after})`);
 
-  console.log('ページエラー (expect []):', JSON.stringify(errors));
+  check('ページエラーなし', '[]', JSON.stringify(errors));
+  report();
   await browser.close();
 })();
