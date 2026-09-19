@@ -178,6 +178,14 @@
     .kinko-block-missing .kinko-block-title { color: #b8860b; }
     .kinko-block-title { font-size: 0.8rem; font-weight: bold; color: #0d6efd; margin-bottom: 4px; }
     .kinko-block-body { font-size: 0.82rem; color: #444; white-space: pre-wrap; line-height: 1.6; }
+    .kinko-breakdown-wrap { margin-top: 8px; }
+    .kinko-breakdown-wrap > summary { font-size: 0.8rem; color: #0d6efd; cursor: pointer; }
+    .kinko-breakdown { width: 100%; border-collapse: collapse; font-size: 0.8rem; color: #444; margin-top: 6px; }
+    .kinko-breakdown td { padding: 3px 4px; border-bottom: 1px solid #e3e7ec; }
+    .kinko-breakdown td.num { text-align: right; white-space: nowrap; }
+    .kinko-breakdown tr.zero td { color: #9aa3ad; }
+    .kinko-breakdown-note { font-size: 0.78rem; color: #8a6d3b; margin-top: 8px; }
+    .kinko-breakdown-warn { font-size: 0.8rem; color: #b02a37; font-weight: bold; margin-top: 8px; }
     .handover-count-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 8px; margin-bottom: 12px; }
     .handover-count-btn { padding: 14px 4px; border-radius: 10px; border: 2px solid #dde2eb; background: white; font-weight: bold; font-size: 1rem; color: #333; }
     .handover-count-btn.selected { border-color: #0084ff; background: #e7f1ff; color: #0d6efd; }
@@ -1266,8 +1274,8 @@
     }
 
     // ===== バージョン表示 (再読み込み後に最新版を掴めたか確認できるように) =====
-    const APP_VERSION = 'v1.15.0';
-    const APP_BUILD_TIME = '2026-09-19 12:00';
+    const APP_VERSION = 'v1.16.0';
+    const APP_BUILD_TIME = '2026-09-19 12:40';
     function updateVersionDisplay() {
       const el = document.getElementById('appVersionInfo');
       if (!el) return;
@@ -4009,6 +4017,43 @@
       return lines.join('\n');
     }
 
+    // 金種ごとの内訳（金庫アプリの vaultBreakdown）。責任者が銀行へ両替に行くときに
+    // 「1000円札が何枚あるか」を見るためのもの。
+    //
+    // 引継ぎ書には出さない。あれはスタッフ全員が読むもので、11行増えると本文が埋もれる。
+    // 必要なのは両替に行く責任者だけなので、オーナー設定にだけ出す
+    function formatKinkoBreakdownHtml(r) {
+      const rows = r && r.vaultBreakdown;
+      // この項目は金庫アプリ側で後から追加された。それ以前の記録には存在しない。
+      // 黙って何も出さないと「壊れている」のか「元から無い」のかが画面から分からない
+      if (!Array.isArray(rows) || !rows.length) {
+        return '<div class="kinko-breakdown-note">この記録には金種ごとの内訳がありません'
+          + '（内訳の保存は金庫アプリが対応した以降の点検からです）。</div>';
+      }
+      const body = rows.map(row => {
+        const label = String((row && row.label) || '');
+        const count = String((row && row.count) || '');
+        const sub = String((row && row.sub) || '0');
+        // 0円の行は薄く出す。消してしまうと「何が無いか」が読めなくなる。
+        // 両替に行く人は「いま何が足りないか」も見たい
+        return `<tr class="${parseAmount(sub) === 0 ? 'zero' : ''}">`
+          + `<td>${escapeHtml(label)}</td>`
+          + `<td class="num">${escapeHtml(count)}</td>`
+          + `<td class="num">${escapeHtml(sub)} 円</td></tr>`;
+      }).join('');
+      // 内訳の合計が実査合計と合わなければ、どちらかが正しくない。黙って両方出すと、
+      // 合わない枚数を信じたまま銀行へ出かけることになる
+      const sum = rows.reduce((acc, row) => acc + parseAmount(row && row.sub), 0);
+      const total = parseAmount(r.vaultTotal);
+      const warn = sum === total ? ''
+        : `<div class="kinko-breakdown-warn">⚠️ 内訳の合計 ${sum.toLocaleString()} 円が`
+          + `実査合計 ${total.toLocaleString()} 円と一致しません。`
+          + `両替に使う前に金庫アプリ側の記録を確認してください。</div>`;
+      return warn
+        + '<details class="kinko-breakdown-wrap"><summary>金種ごとの内訳を見る</summary>'
+        + `<table class="kinko-breakdown"><tbody>${body}</tbody></table></details>`;
+    }
+
     // 事務所金庫など、店舗の引継ぎに紐づかない金庫の状況を、責任者がその場で確認するためのもの。
     // 意図的にどこにも保存しない（スタッフに見せない・古い値が残らない）
     async function loadKinkoSafeStatus() {
@@ -4031,8 +4076,9 @@
           const body = record
             ? escapeHtml(formatKinkoRecordText(record))
             : escapeHtml('まだ記録がありません');
+          const breakdown = record ? formatKinkoBreakdownHtml(record) : '';
           return `<div class="kinko-block"><div class="kinko-block-title">${escapeHtml(name)}</div>`
-            + `<div class="kinko-block-body">${body}</div></div>`;
+            + `<div class="kinko-block-body">${body}</div>${breakdown}</div>`;
         }).join('');
         statusEl.innerText = `${results.length}件を読み込みました（${new Date().toLocaleString('ja-JP')} 時点）`;
       } catch (e) {

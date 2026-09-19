@@ -89,7 +89,22 @@ const path = require('path');
     });
     kdb.collection('storesConfig').doc('safe-office').collection('records').add({
       datetime: '2026-09-16T08:00', storeId: 'safe-office', storeName: '事務所金庫',
-      vaultTotal: '498,000', vaultTarget: 500000, vaultDiff: '-2,000', memo: '両替分未精算'
+      vaultTotal: '498,000', vaultTarget: 500000, vaultDiff: '-2,000', memo: '両替分未精算',
+      // 金種ごとの内訳。責任者が銀行へ両替に行くときに見る。
+      // 配列は常に11件・この順番で届く（紙幣→硬貨→棒金→バラ銭）
+      vaultBreakdown: [
+        { label: '10,000円札', count: '45 枚', sub: '450,000' },
+        { label: '5,000円札', count: '8 枚', sub: '40,000' },
+        { label: '2,000円札', count: '0 枚', sub: '0' },
+        { label: '1,000円札', count: '5 枚', sub: '5,000' },
+        { label: '500円玉 (10枚単位)', count: '0 枚 (0円)', sub: '0' },
+        { label: '100円棒金', count: '0 本 (0枚)', sub: '0' },
+        { label: '50円棒金', count: '0 本 (0枚)', sub: '0' },
+        { label: '10円棒金', count: '0 本 (0枚)', sub: '0' },
+        { label: '5円棒金', count: '0 本 (0枚)', sub: '0' },
+        { label: '1円棒金', count: '0 本 (0枚)', sub: '0' },
+        { label: '硬貨バラ（各種）', count: '3,000 円', sub: '3,000' }
+      ]
     });
     const recs = kdb.collection('storesConfig').doc('store-kiyokawa').collection('records');
     recs.add({
@@ -198,6 +213,46 @@ const path = require('path');
   check('status message shows the count', true, (await page.locator('#kinkoSafeStatusMsg').innerText()).includes('4件'));
   // 意図的にどこにも保存しない（古い値が残らない・スタッフに見えない）
   check('saved nothing anywhere', '[]', JSON.stringify(await page.evaluate(() => window.__firestoreWrites)));
+
+  // ===== 金種ごとの内訳（両替に持っていく枚数） =====
+  // 合計金額だけでは「1000円札が何枚あるか」が分からず、銀行に行く前に金庫を開け直すことになる
+  const office = page.locator('#kinkoSafeStatusList .kinko-block').filter({ hasText: '事務所金庫' });
+  check('内訳は畳んでおく（開くまで本文を長くしない）', false,
+    await office.locator('.kinko-breakdown-wrap').evaluate(el => el.open));
+  await office.locator('.kinko-breakdown-wrap > summary').click();
+  await page.waitForTimeout(150);
+  const breakdown = await office.locator('.kinko-breakdown').innerText();
+  info('金種ごとの内訳', breakdown);
+  check('11件そのまま出す', 11, await office.locator('.kinko-breakdown tr').count());
+  checkIncludes('紙幣の枚数が出る', breakdown, '45 枚');
+  checkIncludes('棒金は本数と枚数が出る', breakdown, '0 本 (0枚)');
+  checkIncludes('小計が出る', breakdown, '450,000');
+  // 0円の行は薄くするだけで消さない。「何が足りないか」も両替の判断に要る
+  check('0円の行も残す', 7, await office.locator('.kinko-breakdown tr.zero').count());
+
+  // 内訳を保存していなかった頃の記録。黙って何も出さないと
+  // 「壊れている」のか「元から無い」のかが画面から分からない
+  const kiyokawa = page.locator('#kinkoSafeStatusList .kinko-block').filter({ hasText: '福岡清川二丁目店' });
+  check('古い記録に内訳の表は出さない', 0, await kiyokawa.locator('.kinko-breakdown').count());
+  checkIncludes('内訳が無い理由が読める', await kiyokawa.locator('.kinko-breakdown-note').innerText(), '内訳がありません');
+
+  // 内訳の合計と実査合計が食い違うとき。黙って両方出すと、
+  // 合わない枚数を信じたまま銀行へ出かけることになる
+  const mismatch = await page.evaluate(() => {
+    const html = formatKinkoBreakdownHtml({
+      vaultTotal: '498,000',
+      vaultBreakdown: [
+        { label: '10,000円札', count: '45 枚', sub: '450,000' },
+        { label: '1,000円札', count: '5 枚', sub: '5,000' }
+      ]
+    });
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    return div.innerText;
+  });
+  checkIncludes('内訳の合計が合わなければ知らせる', mismatch, '一致しません');
+  checkIncludes('食い違いの両方の数字を出す', mismatch, '455,000');
+  check('内訳が合っていれば警告は出さない', false, breakdown.includes('一致しません'));
 
   check('ページエラーなし', '[]', JSON.stringify(errors));
   report();
