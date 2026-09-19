@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { check, checkIncludes, checkNotIncludes, info, report } = require('./assert');
 const fs = require('fs');
 const path = require('path');
 const PORT = process.env.PORT || 8175;
@@ -7,7 +8,7 @@ const PORT = process.env.PORT || 8175;
   const page = await browser.newPage({ viewport: { width: 390, height: 950 } });
   const errors = [];
   page.on('pageerror', err => errors.push('pageerror: ' + err.message));
-  page.on('dialog', d => { console.log('dialog:', d.message()); d.accept(); });
+  page.on('dialog', d => { info('dialog', d.message()); d.accept(); });
 
   const mockScript = fs.readFileSync(path.join(__dirname, 'firebase-mock.js'), 'utf8');
   await page.addInitScript(mockScript);
@@ -60,28 +61,31 @@ const PORT = process.env.PORT || 8175;
   await page.waitForTimeout(400);
 
   // 🔁 持ち越し質問が出ないこと = 質問数が登録項目数(2)と一致すること
-  console.log('progress label (expect 質問 1 / 2, no carry-over questions):', await page.locator('#handoverProgressLabel').innerText());
-  console.log('first question is a registered item (expect true):', (await page.locator('#handoverQuestionText').innerText()).includes('レジの過不足'));
-  console.log('no 未解決 carry-over question anywhere (expect false):', (await page.locator('#handoverQuestionText').innerText()).includes('未解決'));
+  check('持ち越し質問が出ない（質問数が登録項目数と一致）', '質問 1 / 2', await page.locator('#handoverProgressLabel').innerText());
+  check('first question is a registered item', true, (await page.locator('#handoverQuestionText').innerText()).includes('レジの過不足'));
+  check('no 未解決 carry-over question anywhere', false, (await page.locator('#handoverQuestionText').innerText()).includes('未解決'));
 
   // 前回の回答が小さく表示されること (あり + 詳細)
-  console.log('prev answer shown (expect true):', await page.locator('#handoverPrevAnswer').isVisible());
+  check('prev answer shown', true, await page.locator('#handoverPrevAnswer').isVisible());
   const prevText = await page.locator('#handoverPrevAnswer').innerText();
-  console.log('prev answer content (expect 前回 + あり + 詳細):', JSON.stringify(prevText));
+  checkIncludes('前回の回答が「前回」として出る', prevText, '前回');
+  checkIncludes('前回の「あり」が出る', prevText, 'あり');
+  info('prev answer content', JSON.stringify(prevText));
 
   // 入力欄は空のまま = 前回値が引き継がれていないこと
-  console.log('yes not preselected (expect false):', await page.evaluate(() => document.getElementById('handoverYesBtn').classList.contains('selected')));
+  check('yes not preselected', false, await page.evaluate(() => document.getElementById('handoverYesBtn').classList.contains('selected')));
   // あり／なしの質問に詳細欄は出さない（引継ぎのテンポを落とさないため）
-  console.log('detail field not shown on yes/no (expect false):', await page.locator('#handoverDetailWrap').isVisible());
+  check('detail field not shown on yes/no', false, await page.locator('#handoverDetailWrap').isVisible());
 
   // ===== 2問目 (件数タイプ) =====
   await page.click('#handoverYesBtn');
   await page.waitForTimeout(150);
   await page.click('#handoverNextBtn');
   await page.waitForTimeout(300);
-  console.log('second question prev answer (expect 前回 + 2件):', JSON.stringify(await page.locator('#handoverPrevAnswer').innerText()));
-  console.log('no count preselected (expect 0):', await page.locator('#handoverCountGrid button.selected').count());
+  checkIncludes('2問目も前回の件数が出る', await page.locator('#handoverPrevAnswer').innerText(), '2件');
+  check('no count preselected', 0, await page.locator('#handoverCountGrid button.selected').count());
 
-  console.log('errors:', JSON.stringify(errors));
+  check('ページエラーなし', '[]', JSON.stringify(errors));
+  report();
   await browser.close();
 })();

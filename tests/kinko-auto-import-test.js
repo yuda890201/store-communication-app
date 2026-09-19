@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { check, checkIncludes, checkNotIncludes, info, report } = require('./assert');
 const PORT = process.env.PORT || 8175;
 const fs = require('fs');
 const path = require('path');
@@ -79,8 +80,8 @@ function localDatetime(offsetMs) {
   await page.waitForTimeout(300);
   await page.click('button[onclick="submitHandover()"]');
   await page.waitForTimeout(700);
-  console.log('done card shown (expect true):', await page.locator('#handoverDoneCard').isVisible());
-  console.log('no import status before opening safe app (expect ""):', JSON.stringify(await page.locator('#handoverKinkoImportStatus').innerText()));
+  check('done card shown', true, await page.locator('#handoverDoneCard').isVisible());
+  check('金庫アプリを開く前は取り込み状況を出さない', '', (await page.locator('#handoverKinkoImportStatus').innerText()).trim());
 
   // ===== 金庫アプリを開いて戻ってくる =====
   // target=_blank の遷移はテストでは起こさず、押した事実だけを再現する
@@ -95,15 +96,15 @@ function localDatetime(offsetMs) {
   });
   await page.waitForTimeout(1200);
   const status = await page.locator('#handoverKinkoImportStatus').innerText();
-  console.log('auto-imported on return (expect true):', status.includes('取り込みました'));
+  check('auto-imported on return', true, status.includes('取り込みました'));
 
   await page.click('button[onclick="closeHandoverWizard()"]');
   await page.waitForTimeout(500);
   // ボタンを一度も押していないのに、引継ぎ書に金庫欄が入っていること
-  console.log('kinko block present without pressing the button (expect 1):', await page.locator('#latestHandoverKinko .kinko-block-body').count());
-  console.log('shows the vault figure (expect true):', (await page.locator('#latestHandoverKinko').innerText()).includes('199,800'));
-  console.log('import button gone from the list (expect 0):', await page.locator('#notebookList button:has-text("金庫の結果を取り込む")').count());
-  console.log('no warning styling once imported (expect false):', await page.evaluate(() =>
+  check('kinko block present without pressing the button', 1, await page.locator('#latestHandoverKinko .kinko-block-body').count());
+  check('shows the vault figure', true, (await page.locator('#latestHandoverKinko').innerText()).includes('199,800'));
+  check('import button gone from the list', 0, await page.locator('#notebookList button:has-text("金庫の結果を取り込む")').count());
+  check('no warning styling once imported', false, await page.evaluate(() =>
     document.getElementById('latestHandoverKinko').classList.contains('kinko-block-missing')));
 
   // ===== 取り込み前の引継ぎは警告として見えること =====
@@ -114,10 +115,11 @@ function localDatetime(offsetMs) {
     });
   });
   await page.waitForTimeout(600);
-  console.log('warning shown for un-imported handover (expect true):', await page.evaluate(() =>
+  check('warning shown for un-imported handover', true, await page.evaluate(() =>
     document.getElementById('latestHandoverKinko').classList.contains('kinko-block-missing')));
-  console.log('warning text (expect 未取り込み):', (await page.locator('#latestHandoverKinko').innerText()).includes('未取り込み'));
+  checkIncludes('未取り込みの警告文', await page.locator('#latestHandoverKinko').innerText(), '未取り込み');
 
-  console.log('errors:', JSON.stringify(errors));
+  check('ページエラーなし', '[]', JSON.stringify(errors));
+  report();
   await browser.close();
 })();

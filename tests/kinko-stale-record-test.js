@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { check, checkIncludes, checkNotIncludes, info, report } = require('./assert');
 const PORT = process.env.PORT || 8175;
 const fs = require('fs');
 const path = require('path');
@@ -85,16 +86,14 @@ async function boot(browser, sink) {
   await page.waitForTimeout(1200);
 
   const status = await page.locator('#handoverKinkoImportStatus').innerText();
-  console.log('stale record is NOT auto-imported (expect true):', status.includes('新しい点検が見つかりません'));
-  console.log('status names the store on the record (expect true):', status.includes('博多住吉通り店'));
-  console.log('status tells them to check the store (expect true):', status.includes('店舗名を確認'));
+  check('stale record is NOT auto-imported', true, status.includes('新しい点検が見つかりません'));
+  check('status names the store on the record', true, status.includes('博多住吉通り店'));
+  check('status tells them to check the store', true, status.includes('店舗名を確認'));
 
   await page.click('button[onclick="closeHandoverWizard()"]');
   await page.waitForTimeout(500);
-  console.log('nothing attached (expect 1 = button still there):',
-    await page.locator('#notebookList button:has-text("金庫の結果を取り込む")').count());
-  console.log('the stale record is not in the handover (expect false):',
-    (await page.locator('#latestHandoverKinko').innerText()).includes(OLD_RECORD.datetime.replace('T', ' ')));
+  check('nothing attached', 1, await page.locator('#notebookList button:has-text("金庫の結果を取り込む")').count());
+  check('the stale record is not in the handover', false, (await page.locator('#latestHandoverKinko').innerText()).includes(OLD_RECORD.datetime.replace('T', ' ')));
 
   // ===== 正しい店舗で点検し直せば、戻った時に取り込まれること =====
   await page.evaluate(fresh => {
@@ -117,14 +116,13 @@ async function boot(browser, sink) {
   await page.evaluate(() => openView('notebook'));
   await page.waitForTimeout(500);
   const card = await page.locator('#latestHandoverKinko').innerText();
-  console.log('a fresh record does get imported (expect true):', card.includes('199,500'));
+  check('a fresh record does get imported', true, card.includes('199,500'));
 
   // ===== どの店舗の点検かが必ず出ること（今回の事故が一目で分かるように） =====
-  console.log('the kinko block names the store (expect true):', card.includes('点検店舗: 博多住吉通り店'));
+  check('the kinko block names the store', true, card.includes('点検店舗: 博多住吉通り店'));
   await page.locator('#notebookList button:has-text("印刷")').first().click();
   await page.waitForTimeout(300);
-  console.log('print includes the store too (expect true):',
-    (await page.locator('#printArea').innerText()).includes('点検店舗: 博多住吉通り店'));
+  check('print includes the store too', true, (await page.locator('#printArea').innerText()).includes('点検店舗: 博多住吉通り店'));
 
   // ===== 同じ「分」に保存された記録を弾かないこと =====
   // 金庫アプリの datetime は分までしか持たない。開いた時刻(秒あり)とそのまま比べると
@@ -166,13 +164,14 @@ async function boot(browser, sink) {
   });
   await page2.waitForTimeout(1200);
   const sameMinuteStatus = await page2.locator('#handoverKinkoImportStatus').innerText();
-  console.log('same-minute record is imported, not rejected (expect true):', sameMinuteStatus.includes('取り込みました'));
-  console.log('no false stale warning (expect false):', sameMinuteStatus.includes('見つかりません'));
+  check('same-minute record is imported, not rejected', true, sameMinuteStatus.includes('取り込みました'));
+  check('no false stale warning', false, sameMinuteStatus.includes('見つかりません'));
 
   // 一方、前の分の記録はちゃんと弾くこと（判定が甘くなりすぎていないか）
   await page2.click('button[onclick="closeHandoverWizard()"]');
   await page2.waitForTimeout(300);
 
-  console.log('errors:', JSON.stringify(sink.errors));
+  check('ページエラーなし', '[]', JSON.stringify(sink.errors));
+  report();
   await browser.close();
 })();

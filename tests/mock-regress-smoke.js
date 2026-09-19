@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { check, checkIncludes, checkNotIncludes, info, report } = require('./assert');
 const fs = require('fs');
 const path = require('path');
 const PORT = process.env.PORT || 8175;
@@ -23,7 +24,7 @@ const PORT = process.env.PORT || 8175;
   await page.click('#pinLoginForm button');
   await page.waitForTimeout(300);
 
-  console.log('connected (expect ✅ 接続済み):', await page.locator('#dbStatusHome').innerText());
+  check('接続表示', '✅ 接続済み', await page.locator('#dbStatusHome').innerText());
 
   await page.evaluate(() => {
     window.firebase.firestore().collection('notebookEntries').add({ type: 'note', text: 'basic mock check', author: 'テスト', store: '', createdAt: new Date() });
@@ -31,8 +32,9 @@ const PORT = process.env.PORT || 8175;
   await page.waitForTimeout(300);
   await page.click('.grid-card[onclick="openView(\'notebook\')"]');
   await page.waitForTimeout(150);
-  console.log('notebook entry visible:', (await page.locator('#notebookList').innerText()).includes('basic mock check'));
+  info('notebook entry visible', (await page.locator('#notebookList').innerText()).includes('basic mock check'));
 
-  console.log('errors:', JSON.stringify(errors));
+  check('ページエラーなし', '[]', JSON.stringify(errors));
+  report();
   await browser.close();
 })();

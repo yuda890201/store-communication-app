@@ -19,31 +19,54 @@ const runTests = () => {
     .filter(f => f.endsWith('-test.js') || f === 'mock-regress-smoke.js')
     .sort();
 
-  const crashed = [];
+  const crashed = [];   // スクリプトが落ちた
+  const failed = [];    // 判定が食い違った
+  const unjudged = [];  // report() を呼んでいない = 自動判定していない
+  let totalPass = 0, totalFail = 0;
+
   for (const t of tests) {
     process.stdout.write(`\n===== ${t} =====\n`);
+    let out = '';
+    let crashedHere = false;
     try {
-      process.stdout.write(execFileSync(process.execPath, [path.join(__dirname, t)], {
+      out = execFileSync(process.execPath, [path.join(__dirname, t)], {
         env: { ...process.env, PORT: String(PORT) },
         encoding: 'utf8',
         timeout: 120000
-      }));
+      });
     } catch (e) {
-      process.stdout.write((e.stdout || '') + (e.stderr || '') + '\n');
-      process.stdout.write(`!! 異常終了: ${t}\n`);
-      crashed.push(t);
+      out = (e.stdout || '') + (e.stderr || '');
+      crashedHere = true;
+    }
+    process.stdout.write(out);
+
+    // assert.js が最後に出す 1 行から合否を拾う
+    const m = /TEST-RESULT pass=(\d+) fail=(\d+)/.exec(out);
+    if (m) {
+      const pass = Number(m[1]), fail = Number(m[2]);
+      totalPass += pass; totalFail += fail;
+      if (fail > 0) failed.push(`${t} (${fail}件)`);
+      // 判定行が出ていれば、終了コードが 1 なのは判定の失敗によるもの。
+      // 判定は成功しているのに落ちた場合だけ「異常終了」として扱う
+      if (crashedHere && fail === 0) { process.stdout.write(`!! 異常終了: ${t}\n`); crashed.push(t); }
+    } else {
+      // report() まで到達していない。途中で落ちたか、まだ自動判定に移行していない
+      process.stdout.write(`!! 判定結果が出力されていません: ${t}\n`);
+      (crashedHere ? crashed : unjudged).push(t);
     }
   }
 
+  const bad = crashed.length + failed.length + unjudged.length;
   console.log('\n========================================');
-  console.log(`実行: ${tests.length}本 / 異常終了: ${crashed.length}本`);
+  console.log(`実行: ${tests.length}本 / 判定: ${totalPass}件 成功 ・ ${totalFail}件 失敗`);
+  if (failed.length) console.log('判定が食い違ったテスト:\n  ' + failed.join('\n  '));
   if (crashed.length) console.log('異常終了:\n  ' + crashed.join('\n  '));
-  console.log('\n各行の「(expect ...)」と実際の値が一致しているか、出力を目視で確認してください。');
-  console.log('自動では判定していません。異常終了のみ検出します。');
+  if (unjudged.length) console.log('自動判定していないテスト:\n  ' + unjudged.join('\n  '));
+  if (!bad) console.log('すべて自動判定で合格しました。');
   console.log('========================================');
 
   server.kill();
-  process.exit(crashed.length ? 1 : 0);
+  process.exit(bad ? 1 : 0);
 };
 
 let started = false;

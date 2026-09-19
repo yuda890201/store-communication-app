@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { check, checkIncludes, checkNotIncludes, info, report } = require('./assert');
 const PORT = process.env.PORT || 8175;
 const fs = require('fs');
 const path = require('path');
@@ -46,21 +47,21 @@ const path = require('path');
   await page.waitForTimeout(400);
 
   // ===== 1問目: 件数は選択式 =====
-  console.log('count uses buttons not a number input (expect 0):', await page.locator('#handoverCountRow input[type=number]').count());
-  console.log('count buttons 0-10 + 11件以上 (expect 12):', await page.locator('#handoverCountGrid button').count());
-  console.log('over-limit button label (expect 11件以上):', await page.locator('#handoverCountGrid button.wide').innerText());
-  console.log('next disabled before choosing (expect true):', await page.locator('#handoverNextBtn').isDisabled());
-  console.log('detail field hidden on count (expect false):', await page.locator('#handoverDetailWrap').isVisible());
+  check('count uses buttons not a number input', 0, await page.locator('#handoverCountRow input[type=number]').count());
+  check('count buttons 0-10 + 11件以上', 12, await page.locator('#handoverCountGrid button').count());
+  check('上限超えのボタン文言', '11件以上', await page.locator('#handoverCountGrid button.wide').innerText());
+  check('next disabled before choosing', true, await page.locator('#handoverNextBtn').isDisabled());
+  check('detail field hidden on count', false, await page.locator('#handoverDetailWrap').isVisible());
   await page.locator('#handoverCountGrid button').nth(3).click();
   await page.waitForTimeout(200);
-  console.log('next enabled after choosing (expect false):', await page.locator('#handoverNextBtn').isDisabled());
+  check('next enabled after choosing', false, await page.locator('#handoverNextBtn').isDisabled());
   await page.click('#handoverNextBtn');
   await page.waitForTimeout(300);
 
   // ===== 2問目: 写真は必須 =====
-  console.log('photo row shown (expect true):', await page.locator('#handoverPhotoRow').isVisible());
-  console.log('yes/no hidden for photo type (expect false):', await page.locator('#handoverYesNoRow').isVisible());
-  console.log('next blocked until photo taken (expect true):', await page.locator('#handoverNextBtn').isDisabled());
+  check('photo row shown', true, await page.locator('#handoverPhotoRow').isVisible());
+  check('yes/no hidden for photo type', false, await page.locator('#handoverYesNoRow').isVisible());
+  check('next blocked until photo taken', true, await page.locator('#handoverNextBtn').isDisabled());
   await page.setInputFiles('#handoverPhotoInput', { name: 'counter.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('fake-jpeg-bytes') });
   await page.waitForTimeout(700);
   // モックのgetDownloadURLは読み込めないURLを返すため、画像は描画されずisVisibleが使えない。
@@ -69,48 +70,50 @@ const path = require('path');
     const el = document.getElementById('handoverPhotoPreview');
     return { display: el.style.display, hasSrc: !!el.getAttribute('src') };
   });
-  console.log('preview displayed after upload (expect block / true):', photoPreview.display, '/', photoPreview.hasSrc);
-  console.log('next enabled after photo (expect false):', await page.locator('#handoverNextBtn').isDisabled());
+  check('アップロード後にプレビューが出る', 'block', photoPreview.display);
+  check('プレビューに画像が入る', true, photoPreview.hasSrc);
+  check('next enabled after photo', false, await page.locator('#handoverNextBtn').isDisabled());
   await page.click('#handoverNextBtn');
   await page.waitForTimeout(300);
 
   // ===== 3問目: あり/なし＋プリセット複数選択＋詳細＋写真 =====
-  console.log('presets hidden before choosing あり (expect false):', await page.locator('#handoverPresetWrap').isVisible());
+  check('presets hidden before choosing あり', false, await page.locator('#handoverPresetWrap').isVisible());
   await page.click('#handoverYesBtn');
   await page.waitForTimeout(250);
-  console.log('presets shown after あり (expect true):', await page.locator('#handoverPresetWrap').isVisible());
-  console.log('preset option count (expect 3):', await page.locator('#handoverPresetList button').count());
-  console.log('detail shown for presets (expect true):', await page.locator('#handoverDetailWrap').isVisible());
-  console.log('photo optional row shown for presets (expect true):', await page.locator('#handoverPhotoRow').isVisible());
+  check('presets shown after あり', true, await page.locator('#handoverPresetWrap').isVisible());
+  check('preset option count', 3, await page.locator('#handoverPresetList button').count());
+  check('detail shown for presets', true, await page.locator('#handoverDetailWrap').isVisible());
+  check('photo optional row shown for presets', true, await page.locator('#handoverPhotoRow').isVisible());
   await page.locator('#handoverPresetList button').nth(0).click();
   await page.waitForTimeout(200);
   await page.locator('#handoverPresetList button').nth(2).click();
   await page.waitForTimeout(200);
   const selectedCount = await page.locator('#handoverPresetList button.selected').count();
-  console.log('multi-select works (expect 2):', selectedCount);
+  check('multi-select works', 2, selectedCount);
   await page.fill('#handoverDetailInput', 'レジ2番でお釣り違い。返金対応済み。');
   await page.click('#handoverNextBtn');
   await page.waitForTimeout(400);
 
   // ===== プレビュー本文 =====
   const preview = await page.locator('#handoverPreviewText').inputValue();
-  console.log('preview has count line (expect true):', preview.includes('店頭受取荷物: 3件'));
-  console.log('preview has photo line (expect true):', preview.includes('写真あり'));
-  console.log('preview has both presets (expect true):', preview.includes('接客クレーム') && preview.includes('会計トラブル（誤精算・返金）'));
-  console.log('preview has detail (expect true):', preview.includes('返金対応済み'));
+  check('preview has count line', true, preview.includes('店頭受取荷物: 3件'));
+  check('preview has photo line', true, preview.includes('写真あり'));
+  check('preview has both presets', true, preview.includes('接客クレーム') && preview.includes('会計トラブル（誤精算・返金）'));
+  check('preview has detail', true, preview.includes('返金対応済み'));
 
   // ===== 投稿後に金庫アプリのQRが出ること =====
   await page.click('button[onclick="submitHandover()"]');
   await page.waitForTimeout(700);
-  console.log('done card shown (expect true):', await page.locator('#handoverDoneCard').isVisible());
-  console.log('open-safe-app button visible (expect true):', await page.locator('#handoverKinkoLink').isVisible());
-  console.log('button points at the configured url (expect https://example.com/kinko/):', await page.locator('#handoverKinkoLink').getAttribute('href'));
-  console.log('progress label hidden after posting (expect false):', await page.locator('#handoverProgressLabel').isVisible());
-  console.log('cancel button hidden after posting (expect false):', await page.locator('#handoverCancelBtn').isVisible());
+  check('done card shown', true, await page.locator('#handoverDoneCard').isVisible());
+  check('open-safe-app button visible', true, await page.locator('#handoverKinkoLink').isVisible());
+  checkIncludes('設定した金庫アプリのURLを指す', await page.locator('#handoverKinkoLink').getAttribute('href'), 'https://example.com/kinko/');
+  check('progress label hidden after posting', false, await page.locator('#handoverProgressLabel').isVisible());
+  check('cancel button hidden after posting', false, await page.locator('#handoverCancelBtn').isVisible());
   await page.click('button[onclick="closeHandoverWizard()"]');
   await page.waitForTimeout(300);
-  console.log('wizard closed, list visible again (expect true):', await page.locator('#notebookMainPanel').isVisible());
+  check('wizard closed, list visible again', true, await page.locator('#notebookMainPanel').isVisible());
 
-  console.log('errors:', JSON.stringify(errors));
+  check('ページエラーなし', '[]', JSON.stringify(errors));
+  report();
   await browser.close();
 })();

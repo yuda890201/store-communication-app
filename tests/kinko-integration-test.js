@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { check, checkIncludes, checkNotIncludes, info, report } = require('./assert');
 const PORT = process.env.PORT || 8175;
 const fs = require('fs');
 const path = require('path');
@@ -58,13 +59,13 @@ const path = require('path');
   }));
   await page.click('button[onclick="saveKinkoConfig()"]');
   await page.waitForTimeout(300);
-  console.log('config saved (expect 保存しました):', await page.locator('#kinkoConfigStatus').innerText());
+  checkIncludes('連携設定の保存', await page.locator('#kinkoConfigStatus').innerText(), '保存しました');
 
   // 両アプリで店舗名の付け方が違う（こちら「清川二丁目」／金庫「福岡清川二丁目店」）
   await page.fill('#kinkoStoreMapInput', '清川二丁目 = 福岡清川二丁目店');
   await page.click('button[onclick="saveKinkoStoreMap()"]');
   await page.waitForTimeout(300);
-  console.log('store map saved (expect 1件):', await page.locator('#kinkoStoreMapStatus').innerText());
+  checkIncludes('店舗の対応付けの保存', await page.locator('#kinkoStoreMapStatus').innerText(), '1件');
   await page.click('#ownerDrawer .side-drawer-close-btn');
   await page.click('#sideDrawer .side-drawer-close-btn');
   await page.waitForTimeout(300);
@@ -121,33 +122,33 @@ const path = require('path');
   await page.waitForTimeout(400);
 
   // ===== 取り込み前 =====
-  console.log('import button shown before attaching (expect true):', await page.locator('#notebookList button:has-text("金庫の結果を取り込む")').count() > 0);
-  console.log('kinko block absent before attaching (expect 0):', await page.locator('#notebookList .kinko-block').count());
+  check('import button shown before attaching', true, await page.locator('#notebookList button:has-text("金庫の結果を取り込む")').count() > 0);
+  check('kinko block absent before attaching', 0, await page.locator('#notebookList .kinko-block').count());
 
   // ===== 取り込み =====
   await page.click('#notebookList button:has-text("金庫の結果を取り込む")');
   await page.waitForTimeout(900);
-  console.log('kinko block shown after attaching (expect 1):', await page.locator('#notebookList .kinko-block').count());
+  check('kinko block shown after attaching', 1, await page.locator('#notebookList .kinko-block').count());
   const kinkoText = await page.locator('#notebookList .kinko-block-body').innerText();
-  console.log('shows the latest record, not the older one (expect true):', kinkoText.includes('2026-09-16 10:30') && !kinkoText.includes('2026-09-15'));
-  console.log('shows both register staff (expect true):', kinkoText.includes('佐藤') && kinkoText.includes('鈴木'));
-  console.log('shows vault figures (expect true):', kinkoText.includes('199,900') && kinkoText.includes('200,000'));
+  check('shows the latest record, not the older one', true, kinkoText.includes('2026-09-16 10:30') && !kinkoText.includes('2026-09-15'));
+  check('shows both register staff', true, kinkoText.includes('佐藤') && kinkoText.includes('鈴木'));
+  check('shows vault figures', true, kinkoText.includes('199,900') && kinkoText.includes('200,000'));
   // 累計と今回分が違うときだけ併記し、同じときは重複させない
-  console.log('cumulative and this-shift shown together (expect true):', kinkoText.includes('-300（今回分 -100）'));
-  console.log('no redundant delta when equal (expect false):', kinkoText.includes('0（今回分 0）'));
-  console.log('shows memo (expect true):', kinkoText.includes('レジ2番で釣銭違い'));
-  console.log('import button hidden after attaching (expect 0):', await page.locator('#notebookList button:has-text("金庫の結果を取り込む")').count());
+  check('cumulative and this-shift shown together', true, kinkoText.includes('-300（今回分 -100）'));
+  check('no redundant delta when equal', false, kinkoText.includes('0（今回分 0）'));
+  check('shows memo', true, kinkoText.includes('レジ2番で釣銭違い'));
+  check('import button hidden after attaching', 0, await page.locator('#notebookList button:has-text("金庫の結果を取り込む")').count());
   // 一番見られる「最新の引継ぎ」にも出ること
-  console.log('latest handover card shows kinko too (expect true):', await page.locator('#latestHandoverKinko').isVisible());
-  console.log('latest card has the vault figure (expect true):', (await page.locator('#latestHandoverKinko').innerText()).includes('199,900'));
+  check('latest handover card shows kinko too', true, await page.locator('#latestHandoverKinko').isVisible());
+  check('latest card has the vault figure', true, (await page.locator('#latestHandoverKinko').innerText()).includes('199,900'));
 
   // ===== 印刷に金庫欄が入ること =====
   await page.click('#notebookList button:has-text("印刷")');
   await page.waitForTimeout(300);
   const printArea = await page.locator('#printArea').innerText();
-  console.log('print called (expect 1):', await page.evaluate(() => window.__printed));
-  console.log('print includes handover text (expect true):', printArea.includes('レジ過不足あり'));
-  console.log('print includes kinko section (expect true):', printArea.includes('金庫・レジ現金点検') && printArea.includes('199,900'));
+  check('print called', 1, await page.evaluate(() => window.__printed));
+  check('print includes handover text', true, printArea.includes('レジ過不足あり'));
+  check('print includes kinko section', true, printArea.includes('金庫・レジ現金点検') && printArea.includes('199,900'));
 
   // ===== 店舗名が一致しない場合はエラーを出して黙って失敗しないこと =====
   await page.evaluate(() => {
@@ -171,7 +172,7 @@ const path = require('path');
     await btns.first().click();
     await page.waitForTimeout(900);
   }
-  console.log('unmatched store surfaces an error (expect true):', dialogs.some(m => m.includes('店舗が見つかりません')));
+  check('unmatched store surfaces an error', true, dialogs.some(m => m.includes('店舗が見つかりません')));
 
   // ===== 事務所金庫の状況をその場で確認できること（保存はしない） =====
   await page.evaluate(() => openView('home'));
@@ -185,19 +186,20 @@ const path = require('path');
     // ここから先の書き込みだけを見たいので、一度リセットする
     window.__firestoreWrites = [];
   });
-  console.log('nothing listed before loading (expect 0):', await page.locator('#kinkoSafeStatusList .kinko-block').count());
+  check('nothing listed before loading', 0, await page.locator('#kinkoSafeStatusList .kinko-block').count());
   await page.click('button[onclick="loadKinkoSafeStatus()"]');
   await page.waitForTimeout(900);
-  console.log('lists every safe in the safe app (expect 4):', await page.locator('#kinkoSafeStatusList .kinko-block').count());
+  check('lists every safe in the safe app', 4, await page.locator('#kinkoSafeStatusList .kinko-block').count());
   const safeText = await page.locator('#kinkoSafeStatusList').innerText();
-  console.log('includes the back-room safe (expect true):', safeText.includes('事務所金庫') && safeText.includes('498,000'));
-  console.log('includes its memo (expect true):', safeText.includes('両替分未精算'));
+  check('includes the back-room safe', true, safeText.includes('事務所金庫') && safeText.includes('498,000'));
+  check('includes its memo', true, safeText.includes('両替分未精算'));
   // 記録がまだ無い店舗でも空欄にせず、そう書く
-  console.log('store with no record says so (expect true):', safeText.includes('まだ記録がありません'));
-  console.log('status message shows the count (expect true):', (await page.locator('#kinkoSafeStatusMsg').innerText()).includes('4件'));
+  check('store with no record says so', true, safeText.includes('まだ記録がありません'));
+  check('status message shows the count', true, (await page.locator('#kinkoSafeStatusMsg').innerText()).includes('4件'));
   // 意図的にどこにも保存しない（古い値が残らない・スタッフに見えない）
-  console.log('saved nothing anywhere (expect []):', JSON.stringify(await page.evaluate(() => window.__firestoreWrites)));
+  check('saved nothing anywhere', '[]', JSON.stringify(await page.evaluate(() => window.__firestoreWrites)));
 
-  console.log('errors:', JSON.stringify(errors));
+  check('ページエラーなし', '[]', JSON.stringify(errors));
+  report();
   await browser.close();
 })();

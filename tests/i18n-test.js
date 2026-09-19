@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { check, checkIncludes, checkNotIncludes, info, report } = require('./assert');
 const fs = require('fs');
 const path = require('path');
 const PORT = process.env.PORT || 8175;
@@ -7,7 +8,7 @@ const PORT = process.env.PORT || 8175;
   const page = await browser.newPage({ viewport: { width: 390, height: 950 } });
   const errors = [];
   page.on('pageerror', err => errors.push('pageerror: ' + err.message));
-  page.on('dialog', d => { console.log('dialog:', d.message()); d.accept(); });
+  page.on('dialog', d => { info('dialog', d.message()); d.accept(); });
 
   const mockScript = fs.readFileSync(path.join(__dirname, 'firebase-mock.js'), 'utf8');
   await page.addInitScript(mockScript);
@@ -25,25 +26,25 @@ const PORT = process.env.PORT || 8175;
   await page.waitForTimeout(300);
 
   // ===== デフォルト(日本語)確認 =====
-  console.log('default notebook label:', await page.locator('.grid-card[onclick="openView(\'notebook\')"] .grid-label').innerText());
+  info('default notebook label', await page.locator('.grid-card[onclick="openView(\'notebook\')"] .grid-label').innerText());
 
   // ===== 英語に切り替え =====
   await page.click('.active-view .settings-btn:has-text("🌐")');
   await page.waitForTimeout(150);
   await page.click('button[onclick="setLang(\'en\')"]');
   await page.waitForTimeout(200);
-  console.log('EN notebook label (expect Notebook):', await page.locator('.grid-card[onclick="openView(\'notebook\')"] .grid-label').innerText());
-  console.log('EN bulletin desc (expect Announcements):', await page.locator('.grid-card[onclick="openView(\'bulletin\')"] .grid-desc').innerText());
-  console.log('EN lostfound label (expect Lost & Found):', await page.locator('.grid-card[onclick="openView(\'lostfound\')"] .grid-label').innerText());
-  console.log('lang persisted in localStorage:', await page.evaluate(() => localStorage.getItem('app_lang')));
+  check('EN 連絡ノートのラベル', 'Notebook', await page.locator('.grid-card[onclick="openView(\'notebook\')"] .grid-label').innerText());
+  check('EN 掲示板の説明', 'Announcements', await page.locator('.grid-card[onclick="openView(\'bulletin\')"] .grid-desc').innerText());
+  check('EN 忘れ物のラベル', 'Lost & Found', await page.locator('.grid-card[onclick="openView(\'lostfound\')"] .grid-label').innerText());
+  info('lang persisted in localStorage', await page.evaluate(() => localStorage.getItem('app_lang')));
 
   // Notebook screen labels
   await page.click('.grid-card[onclick="openView(\'notebook\')"]');
   await page.waitForTimeout(150);
-  console.log('EN notebook view title:', await page.locator('[data-view="notebook"] .view-title').innerText());
-  console.log('EN create handover btn:', await page.locator('button[onclick="startHandoverWizard()"]').innerText());
-  console.log('EN notebook search placeholder:', await page.locator('#notebookSearchInput').getAttribute('placeholder'));
-  console.log('EN notebook empty state (expect "No notebook entries yet"):', await page.locator('#notebookList .empty-state').innerText());
+  info('EN notebook view title', await page.locator('[data-view="notebook"] .view-title').innerText());
+  info('EN create handover btn', await page.locator('button[onclick="startHandoverWizard()"]').innerText());
+  info('EN notebook search placeholder', await page.locator('#notebookSearchInput').getAttribute('placeholder'));
+  check('EN 連絡ノートの空状態', 'No notebook entries yet', await page.locator('#notebookList .empty-state').innerText());
 
   // ウィザード開始前に引継ぎ項目を1件シード（未登録だとalertでブロックされる）
   await page.evaluate(() => {
@@ -57,10 +58,10 @@ const PORT = process.env.PORT || 8175;
   // Start wizard, check EN labels
   await page.click('button[onclick="startHandoverWizard()"]');
   await page.waitForTimeout(200);
-  console.log('EN virtual manager label:', await page.locator('.chat-sender-label').innerText());
-  console.log('EN progress label (expect starts with Question):', await page.locator('#handoverProgressLabel').innerText());
-  console.log('EN yes btn:', await page.locator('#handoverYesBtn').innerText());
-  console.log('EN next btn:', await page.locator('#handoverNextBtn').innerText());
+  info('EN virtual manager label', await page.locator('.chat-sender-label').innerText());
+  checkIncludes('EN 進捗ラベル', await page.locator('#handoverProgressLabel').innerText(), 'Question');
+  info('EN yes btn', await page.locator('#handoverYesBtn').innerText());
+  info('EN next btn', await page.locator('#handoverNextBtn').innerText());
   await page.click('button[onclick="cancelHandoverWizard()"]');
   await page.waitForTimeout(150);
 
@@ -69,18 +70,18 @@ const PORT = process.env.PORT || 8175;
   await page.waitForTimeout(150);
   await page.click('.grid-card[onclick="openView(\'bulletin\')"]');
   await page.waitForTimeout(150);
-  console.log('EN bulletin title label:', await page.locator('label[for="bulletinTitleInput"]').innerText());
-  console.log('EN bulletin post btn:', await page.locator('button[onclick="addBulletinPost()"]').innerText());
-  console.log('EN bulletin filter all option:', await page.locator('#bulletinFilterStore option[value=""]').innerText());
-  console.log('EN bulletin empty state:', await page.locator('#bulletinList .empty-state').innerText());
+  info('EN bulletin title label', await page.locator('label[for="bulletinTitleInput"]').innerText());
+  info('EN bulletin post btn', await page.locator('button[onclick="addBulletinPost()"]').innerText());
+  info('EN bulletin filter all option', await page.locator('#bulletinFilterStore option[value=""]').innerText());
+  info('EN bulletin empty state', await page.locator('#bulletinList .empty-state').innerText());
 
   // Lost & found screen
   await page.click('[data-view="bulletin"] .back-btn');
   await page.waitForTimeout(150);
   await page.click('.grid-card[onclick="openView(\'lostfound\')"]');
   await page.waitForTimeout(150);
-  console.log('EN lostfound register btn (textContent, details closed):', await page.locator('button[onclick="addLostItem()"]').evaluate(el => el.textContent));
-  console.log('EN lostfound empty state:', await page.locator('#lostList .empty-state').innerText());
+  info('EN lostfound register btn (textContent, details closed)', await page.locator('button[onclick="addLostItem()"]').evaluate(el => el.textContent));
+  info('EN lostfound empty state', await page.locator('#lostList .empty-state').innerText());
 
   // ===== ネパール語に切り替え =====
   await page.click('[data-view="lostfound"] .back-btn');
@@ -89,16 +90,17 @@ const PORT = process.env.PORT || 8175;
   await page.waitForTimeout(150);
   await page.click('button[onclick="setLang(\'ne\')"]');
   await page.waitForTimeout(200);
-  console.log('NE notebook label:', await page.locator('.grid-card[onclick="openView(\'notebook\')"] .grid-label').innerText());
-  console.log('NE chat label:', await page.locator('.grid-card[onclick="openView(\'chat\')"] .grid-label').innerText());
+  info('NE notebook label', await page.locator('.grid-card[onclick="openView(\'notebook\')"] .grid-label').innerText());
+  info('NE chat label', await page.locator('.grid-card[onclick="openView(\'chat\')"] .grid-label').innerText());
 
   // ===== 日本語に戻す =====
   await page.click('.active-view .settings-btn:has-text("🌐")');
   await page.waitForTimeout(150);
   await page.click('button[onclick="setLang(\'ja\')"]');
   await page.waitForTimeout(200);
-  console.log('back to JA notebook label (expect 連絡ノート):', await page.locator('.grid-card[onclick="openView(\'notebook\')"] .grid-label').innerText());
+  check('日本語に戻したときのラベル', '連絡ノート', await page.locator('.grid-card[onclick="openView(\'notebook\')"] .grid-label').innerText());
 
-  console.log('errors:', JSON.stringify(errors));
+  check('ページエラーなし', '[]', JSON.stringify(errors));
+  report();
   await browser.close();
 })();

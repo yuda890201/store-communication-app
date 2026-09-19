@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { check, checkIncludes, checkNotIncludes, info, report } = require('./assert');
 const fs = require('fs');
 const path = require('path');
 const PORT = process.env.PORT || 8175;
@@ -31,25 +32,26 @@ const PORT = process.env.PORT || 8175;
     window.firebase.firestore().collection('appSettings').doc('general').set({ stores: ['渋谷店', 'みなと店'] });
   });
   await page.waitForTimeout(600);
-  console.log('store auto-selected for staff01 (expect 渋谷店):', await page.locator('#storeSwitchBtn').innerText());
+  checkIncludes('staff01では1店舗目が自動選択される', await page.locator('#storeSwitchBtn').innerText(), '渋谷店');
 
   // ===== ⚙️設定からログアウトできること =====
   await page.click('.home-topbar .settings-btn:has-text("⚙️")');
   await page.waitForTimeout(250);
-  console.log('logout button visible while signed in (expect true):', await page.locator('#settingsLogoutBtn').isVisible());
+  check('logout button visible while signed in', true, await page.locator('#settingsLogoutBtn').isVisible());
   await page.click('#settingsLogoutBtn');
   await page.waitForTimeout(600);
-  console.log('PIN overlay shown after logout (expect true):', await page.evaluate(() => document.getElementById('pinLoginOverlay').classList.contains('open')));
-  console.log('side drawer closed after logout (expect false):', await page.evaluate(() => document.getElementById('sideDrawer').classList.contains('open')));
-  console.log('cached login email cleared (expect null):', await page.evaluate(() => localStorage.getItem('cached_shared_login_email')));
+  check('PIN overlay shown after logout', true, await page.evaluate(() => document.getElementById('pinLoginOverlay').classList.contains('open')));
+  check('side drawer closed after logout', false, await page.evaluate(() => document.getElementById('sideDrawer').classList.contains('open')));
+  check('cached login email cleared', null, await page.evaluate(() => localStorage.getItem('cached_shared_login_email')));
 
   // ===== 店舗2のPINに切り替えられること (今回の目的) =====
   await page.fill('#pinLoginInput', 'pin0002');
   await page.click('#pinLoginForm button');
   await page.waitForTimeout(800);
-  console.log('logged in as staff02 (expect false = overlay closed):', await page.evaluate(() => document.getElementById('pinLoginOverlay').classList.contains('open')));
-  console.log('store switched to staff02 store (expect みなと店):', await page.locator('#storeSwitchBtn').innerText());
+  check('logged in as staff02', false, await page.evaluate(() => document.getElementById('pinLoginOverlay').classList.contains('open')));
+  checkIncludes('staff02に切り替えると2店舗目になる', await page.locator('#storeSwitchBtn').innerText(), 'みなと店');
 
-  console.log('errors:', JSON.stringify(errors));
+  check('ページエラーなし', '[]', JSON.stringify(errors));
+  report();
   await browser.close();
 })();

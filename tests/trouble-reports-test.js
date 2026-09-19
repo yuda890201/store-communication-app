@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { check, checkIncludes, checkNotIncludes, info, report } = require('./assert');
 const fs = require('fs');
 const path = require('path');
 const PORT = process.env.PORT || 8175;
@@ -7,7 +8,7 @@ const PORT = process.env.PORT || 8175;
   const page = await browser.newPage({ viewport: { width: 390, height: 950 } });
   const errors = [];
   page.on('pageerror', err => errors.push('pageerror: ' + err.message));
-  page.on('dialog', d => { console.log('dialog:', d.message()); d.accept(); });
+  page.on('dialog', d => { info('dialog', d.message()); d.accept(); });
 
   const mockScript = fs.readFileSync(path.join(__dirname, 'firebase-mock.js'), 'utf8');
   await page.addInitScript(mockScript);
@@ -44,7 +45,7 @@ const PORT = process.env.PORT || 8175;
   // 未設定の段階では「未設定です」の案内が出ること
   await page.click('.grid-card[onclick="openView(\'troublereports\')"]');
   await page.waitForTimeout(200);
-  console.log('shows not-configured message before setup:', (await page.locator('#troubleReportList .empty-state').innerText()).includes('未設定'));
+  info('shows not-configured message before setup', (await page.locator('#troubleReportList .empty-state').innerText()).includes('未設定'));
   await page.click('[data-view="troublereports"] .back-btn');
   await page.waitForTimeout(150);
 
@@ -57,7 +58,7 @@ const PORT = process.env.PORT || 8175;
   await page.fill('#ownerLoginPassword', 'owner-pass1');
   await page.click('button[onclick="doOwnerLogin()"]');
   await page.waitForTimeout(300);
-  console.log('owner drawer opened after admin login (expect true):', await page.evaluate(() => document.getElementById('ownerDrawer').classList.contains('open')));
+  check('owner drawer opened after admin login', true, await page.evaluate(() => document.getElementById('ownerDrawer').classList.contains('open')));
   await page.click('summary:has-text("🚨 不具合報告アプリ連携設定")');
   await page.waitForTimeout(150);
   await page.fill('#troubleReportConfigInput', JSON.stringify({
@@ -68,14 +69,14 @@ const PORT = process.env.PORT || 8175;
   }));
   await page.click('button[onclick="saveTroubleReportConfig()"]');
   await page.waitForTimeout(300);
-  console.log('save status (expect 保存しました):', await page.locator('#troubleReportConfigStatus').innerText());
+  checkIncludes('連携設定の保存', await page.locator('#troubleReportConfigStatus').innerText(), '保存しました');
   await page.click('#ownerDrawer .side-drawer-close-btn');
   await page.click('#sideDrawer .side-drawer-close-btn');
   await page.waitForTimeout(300);
 
-  console.log('secondary app registered (expect true):', await page.evaluate(() => !!window.firebase.app('troubleReportApp')));
-  console.log('secondary app config projectId (expect store-trouble-report):', await page.evaluate(() => window.firebase.app('troubleReportApp').config.projectId));
-  console.log('default app still intact (expect my-store-1234):', await page.evaluate(() => window.firebase.app().config.projectId));
+  check('secondary app registered', true, await page.evaluate(() => !!window.firebase.app('troubleReportApp')));
+  check('別プロジェクトのアプリが作られる', 'store-trouble-report', await page.evaluate(() => window.firebase.app('troubleReportApp').config.projectId));
+  check('既定のアプリは影響を受けない', 'my-store-1234', await page.evaluate(() => window.firebase.app().config.projectId));
 
   // 別プロジェクト側に直接データを注入 (report本体は軽量、photoは別コレクション)
   await page.evaluate(() => {
@@ -106,22 +107,22 @@ const PORT = process.env.PORT || 8175;
   await page.waitForTimeout(400);
 
   const cardCount = await page.locator('#troubleReportList .card').count();
-  console.log('trouble report cards rendered (expect 2):', cardCount);
+  check('trouble report cards rendered', 2, cardCount);
 
   // 新しい順に並ぶので、先頭は 09-13 の報告
   const firstCardText = await page.locator('#troubleReportList .card').first().innerText();
-  console.log('first card contains category/preset:', firstCardText.includes('勤怠・シフト') && firstCardText.includes('保存できない'));
-  console.log('first card shows matched store (渋谷店, registered):', firstCardText.includes('渋谷店') && !firstCardText.includes('一致なし'));
-  console.log('first card status badge (未対応):', firstCardText.includes('未対応'));
+  info('first card contains category/preset', firstCardText.includes('勤怠・シフト') && firstCardText.includes('保存できない'));
+  info('first card shows matched store (渋谷店, registered)', firstCardText.includes('渋谷店') && !firstCardText.includes('一致なし'));
+  info('first card status badge (未対応)', firstCardText.includes('未対応'));
 
   const secondCardText = await page.locator('#troubleReportList .card').nth(1).innerText();
-  console.log('second card shows unmatched store label:', secondCardText.includes('未登録店舗') && secondCardText.includes('一致なし'));
-  console.log('second card status (完了):', secondCardText.includes('完了'));
+  info('second card shows unmatched store label', secondCardText.includes('未登録店舗') && secondCardText.includes('一致なし'));
+  info('second card status (完了)', secondCardText.includes('完了'));
 
   // 未解決件数バッジ (未対応1件 + 完了1件 => 未解決1件)
   await page.click('[data-view="troublereports"] .back-btn');
   await page.waitForTimeout(200);
-  console.log('home badge unresolved count (expect 1):', await page.locator('#badge-troublereports').innerText());
+  check('ホームの未対応バッジ件数', 1, Number(await page.locator('#badge-troublereports').innerText()));
 
   // ===== 写真の遅延読み込み (別コレクションから) =====
   await page.click('.grid-card[onclick="openView(\'troublereports\')"]');
@@ -129,13 +130,13 @@ const PORT = process.env.PORT || 8175;
   await page.locator('#troubleReportList .card').first().locator('button:has-text("写真を見る")').click();
   await page.waitForTimeout(300);
   const imgSrc1 = await page.locator('#troubleReportList .card').first().locator('img').getAttribute('src');
-  console.log('lazy-loaded photo from separate collection (expect base64 jpeg):', (imgSrc1 || '').startsWith('data:image/jpeg;base64,'));
+  check('別コレクションの写真を遅延読み込みする', true, (imgSrc1 || '').startsWith('data:image/jpeg;base64,'));
 
   // 旧形式 (photo_data が本体に直接入っている) も表示できること
   await page.locator('#troubleReportList .card').nth(1).locator('button:has-text("写真を見る")').click();
   await page.waitForTimeout(200);
   const imgSrc2 = await page.locator('#troubleReportList .card').nth(1).locator('img').getAttribute('src');
-  console.log('legacy inline photo_data displayed (expect true):', imgSrc2 === 'data:image/jpeg;base64,b2xkLWZvcm1hdC1waG90bw==');
+  check('legacy inline photo_data displayed', true, imgSrc2 === 'data:image/jpeg;base64,b2xkLWZvcm1hdC1waG90bw==');
 
   // ===== ステータス変更がリアルタイムで反映されること =====
   await page.evaluate(async () => {
@@ -148,8 +149,9 @@ const PORT = process.env.PORT || 8175;
   });
   await page.waitForTimeout(400);
   const firstCardAfterUpdate = await page.locator('#troubleReportList .card').first().innerText();
-  console.log('status updated live to 対応中:', firstCardAfterUpdate.includes('対応中'));
+  info('status updated live to 対応中', firstCardAfterUpdate.includes('対応中'));
 
-  console.log('errors:', JSON.stringify(errors));
+  check('ページエラーなし', '[]', JSON.stringify(errors));
+  report();
   await browser.close();
 })();

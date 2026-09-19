@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { check, checkIncludes, checkNotIncludes, info, report } = require('./assert');
 const fs = require('fs');
 const path = require('path');
 const PORT = process.env.PORT || 8175;
@@ -7,7 +8,7 @@ const PORT = process.env.PORT || 8175;
   const page = await browser.newPage({ viewport: { width: 390, height: 950 } });
   const errors = [];
   page.on('pageerror', err => errors.push('pageerror: ' + err.message));
-  page.on('dialog', d => { console.log('dialog:', d.message()); d.accept(); });
+  page.on('dialog', d => { info('dialog', d.message()); d.accept(); });
 
   const mockScript = fs.readFileSync(path.join(__dirname, 'firebase-mock.js'), 'utf8');
   await page.addInitScript(mockScript);
@@ -66,13 +67,17 @@ const PORT = process.env.PORT || 8175;
 
   await page.click('[data-view="lostfound"] .back-btn');
   await page.waitForTimeout(150);
-  console.log('notebookEntries after registration:', await readNotebookTexts());
-  console.log('chatMessages after registration:', await readChatTexts());
+  const afterRegistration = await readNotebookTexts();
+  check('登録直後に連絡ノートへリマインドが2件出る', 2, afterRegistration.length);
+  info('notebookEntries after registration', afterRegistration);
+  const chatAfterRegistration = await readChatTexts();
+  check('チャットにも同じ2件が出る', 2, chatAfterRegistration.length);
+  info('chatMessages after registration', chatAfterRegistration);
 
   // re-run the check again (simulate another snapshot fire) -> should NOT duplicate posts
   await page.evaluate(() => checkAndPostLostReminders());
   await page.waitForTimeout(300);
-  console.log('notebookEntries count after re-check (should be unchanged, 2):', (await readNotebookTexts()).length);
+  check('再チェックしても二重投稿しない', 2, (await readNotebookTexts()).length);
 
   // simulate the wallet becoming 8 days overdue without having been reported, to test escalation
   await page.click(`.grid-card[onclick="openView('lostfound')"]`);
@@ -100,13 +105,16 @@ const PORT = process.env.PORT || 8175;
   await page.waitForTimeout(150);
   await page.evaluate(() => checkAndPostLostReminders());
   await page.waitForTimeout(300);
-  console.log('notebookEntries after overdue escalation (expect 3):', await readNotebookTexts());
+  const afterEscalation = await readNotebookTexts();
+  check('期限超過の督促で1件増える', 3, afterEscalation.length);
+  info('notebookEntries after overdue escalation', afterEscalation);
 
   // re-run again to confirm no duplicate escalation post
   await page.evaluate(() => checkAndPostLostReminders());
   await page.waitForTimeout(300);
-  console.log('notebookEntries count after re-check post-escalation (should be unchanged, 3):', (await readNotebookTexts()).length);
+  check('督促も再チェックで二重投稿しない', 3, (await readNotebookTexts()).length);
 
-  console.log('errors:', JSON.stringify(errors));
+  check('ページエラーなし', '[]', JSON.stringify(errors));
+  report();
   await browser.close();
 })();
