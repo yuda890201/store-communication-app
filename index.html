@@ -106,6 +106,27 @@
     .side-drawer-header h2 { margin: 0; }
     .side-drawer-close-btn { background: #e0e0e0; color: #333; border-radius: 50%; width: 34px; height: 34px; padding: 0; font-size: 1rem; }
 
+    /* ===== 連絡ノート: 本日の1枚 ＋ 過去の横スクロール =====
+       トピックごとに区切らず、実際のノートのように時系列で書き足していく形にする */
+    .day-sheet { border-left: 4px solid #4a90d9; }
+    .day-sheet.unread { border-left-color: #d94b3a; background: #fffaf9; }
+    .day-sheet-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+    .day-sheet-head label { margin: 0; }
+    .day-sheet-date { font-size: 0.78rem; color: #888; margin-left: auto; }
+    .day-chip { border-radius: 999px; padding: 2px 9px; font-size: 0.72rem; font-weight: bold; }
+    .day-chip.unread { background: #ffe1dd; color: #c0392b; }
+    .day-chip.read { background: #e3f4e6; color: #2e7d4f; }
+    .sheet-line { padding: 9px 0; border-bottom: 1px dashed #e1e4e8; }
+    .sheet-line:last-child { border-bottom: none; padding-bottom: 0; }
+    .sheet-line:first-child { padding-top: 0; }
+    .sheet-line-head { font-size: 0.74rem; color: #999; margin-bottom: 3px; }
+    .sheet-line-body { white-space: pre-wrap; font-size: 0.95rem; line-height: 1.55; }
+    .day-scroller { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 2px 0 8px; -webkit-overflow-scrolling: touch; }
+    .day-scroller .day-card { flex: 0 0 86%; scroll-snap-align: start; background: white; border: 1px solid #e1e4e8; border-radius: 10px; padding: 12px; box-sizing: border-box; }
+    .day-scroller .day-card.unread { border-color: #d94b3a; background: #fffaf9; }
+    .day-card-title { font-weight: bold; font-size: 0.9rem; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .day-card-body { white-space: pre-wrap; font-size: 0.84rem; line-height: 1.5; color: #444; max-height: 190px; overflow-y: auto; }
+
     /* ===== 連絡ノート・掲示板・マニュアル共通の投稿カード ===== */
     .entry-meta { font-size: 0.75rem; color: #999; margin-bottom: 6px; }
     .entry-body { white-space: pre-wrap; font-size: 0.95rem; line-height: 1.5; }
@@ -397,8 +418,12 @@
 
     <!-- 通常表示: 最新の引継ぎ・作成ボタン・履歴 -->
     <div id="notebookMainPanel">
-      <div class="card">
-        <label data-i18n="notebook.latestHandover.label">📋 最新の引継ぎ</label>
+      <div class="card day-sheet" id="todaySheetCard">
+        <div class="day-sheet-head">
+          <label data-i18n="notebook.today.label">📋 本日の引継ぎ</label>
+          <span id="todaySheetChip"></span>
+          <span class="day-sheet-date" id="todaySheetDate"></span>
+        </div>
         <div id="latestHandoverContent" class="entry-body">まだ引継ぎがありません</div>
         <div class="kinko-block" id="latestHandoverKinko" style="display: none;"></div>
         <div class="entry-meta" id="latestHandoverMeta"></div>
@@ -415,6 +440,9 @@
         <textarea id="notebookInput" rows="3" placeholder="例: 本日14時に業者が来店予定です" data-i18n-placeholder="notebook.freeNote.placeholder"></textarea>
         <button class="btn-primary" onclick="addNotebookEntry()" data-i18n="notebook.postBtn">📝 投稿する</button>
       </div>
+
+      <div class="manual-category-heading" data-i18n="notebook.past.heading">📜 過去の引継ぎ（横にスクロール）</div>
+      <div class="day-scroller" id="pastDayScroller"></div>
 
       <div class="manual-category-heading" data-i18n="notebook.history.heading">📜 履歴</div>
       <div class="search-container">
@@ -1005,6 +1033,12 @@
         <button class="btn-primary" onclick="addHandoverItem()">➕ 項目を追加</button>
         <button class="btn-secondary" style="margin-top: 8px;" onclick="seedDefaultHandoverItems()">🌱 サンプル項目を追加する</button>
 
+        <p style="font-size: 0.8rem; color: #666; margin-top: 14px;">連絡ノートの「本日の引継ぎ」を切り替える時刻です。深夜まで営業している店舗で <code>0:00</code> にすると、夜勤の引継ぎが勤務の途中で2枚に割れます。既定の <code>5</code>（朝5時）なら、24時をまたいでも同じ1枚に収まります。</p>
+        <label for="notebookDayStartInput">営業日の切り替え時刻（0〜23）</label>
+        <input type="number" id="notebookDayStartInput" min="0" max="23" placeholder="5" oninput="this.dataset.userEdited = '1'">
+        <button class="btn-secondary" onclick="saveNotebookDayStart()">💾 保存</button>
+        <div id="notebookDayStartStatus" class="status"></div>
+
         <p style="font-size: 0.8rem; color: #666; margin-top: 14px;">引継ぎを投稿したあと、金庫アプリを開くボタンを表示します。金庫の確認までを引継ぎの最後の手順にできます。空欄にすると、ボタンは表示されず投稿してそのまま終了します。</p>
         <label for="kinkoAppUrlInput">金庫アプリのURL</label>
         <input type="text" id="kinkoAppUrlInput" placeholder="https://..." oninput="this.dataset.userEdited = '1'">
@@ -1228,8 +1262,8 @@
     }
 
     // ===== バージョン表示 (再読み込み後に最新版を掴めたか確認できるように) =====
-    const APP_VERSION = 'v1.12.0';
-    const APP_BUILD_TIME = '2026-09-17 23:40';
+    const APP_VERSION = 'v1.13.0';
+    const APP_BUILD_TIME = '2026-09-19 08:00';
     function updateVersionDisplay() {
       const el = document.getElementById('appVersionInfo');
       if (!el) return;
@@ -1299,6 +1333,10 @@
         'home.training.desc': 'Progress & signatures',
         'notebook.title': '📝 Notebook',
         'notebook.latestHandover.label': '📋 Latest handover',
+        'notebook.today.label': "📋 Today's handover",
+        'notebook.past.heading': '📜 Past handovers (scroll sideways)',
+        'notebook.past.empty': 'No past handovers yet',
+        'notebook.unread': 'Unconfirmed',
         'notebook.latestHandover.none': 'No handover yet. Create one from "📋 Create handover".',
         'notebook.confirmBtn': '✅ Confirmed (next shift, tap here)',
         'notebook.createHandoverBtn': '📋 Create handover',
@@ -1448,6 +1486,10 @@
         'home.training.desc': 'प्रगति र हस्ताक्षर रेकर्ड',
         'notebook.title': '📝 नोटबुक',
         'notebook.latestHandover.label': '📋 पछिल्लो बुझाउने विवरण',
+        'notebook.today.label': '📋 आजको बुझाउने विवरण',
+        'notebook.past.heading': '📜 विगतका विवरण (छेउतिर स्क्रोल गर्नुहोस्)',
+        'notebook.past.empty': 'विगतको विवरण छैन',
+        'notebook.unread': 'पुष्टि नभएको',
         'notebook.latestHandover.none': 'अहिलेसम्म बुझाउने विवरण छैन। "📋 बुझाउने विवरण बनाउनुहोस्" बाट बनाउनुहोस्।',
         'notebook.confirmBtn': '✅ पुष्टि गरियो (अर्को शिफ्टका लागि यहाँ थिच्नुहोस्)',
         'notebook.createHandoverBtn': '📋 बुझाउने विवरण बनाउनुहोस्',
@@ -2168,6 +2210,12 @@
         const name = cachedCustomTrainingName || t('home.training.default') || 'トレーニング管理';
         document.getElementById('trainingNameInput').placeholder = name;
 
+        const dayStart = doc.exists && doc.data().notebookDayStartHour;
+        notebookDayStartHour = (typeof dayStart === 'number' && dayStart >= 0 && dayStart <= 23) ? dayStart : 5;
+        const dayStartInput = document.getElementById('notebookDayStartInput');
+        if (dayStartInput && !dayStartInput.dataset.userEdited) dayStartInput.value = notebookDayStartHour;
+        renderNotebookList();
+
         kinkoAppUrl = (doc.exists && doc.data().kinkoAppUrl) || '';
         const kinkoInput = document.getElementById('kinkoAppUrlInput');
         if (kinkoInput && !kinkoInput.dataset.userEdited) kinkoInput.value = kinkoAppUrl;
@@ -2694,19 +2742,142 @@
       renderNotebookList();
     }
 
+    // ===== 連絡ノート: 営業日ごとの1枚 =====
+    // 深夜まで開いている店舗があるため、日付の切り替えは 0:00 ではなく設定した時刻で行う。
+    // 0:00 で切ると、夜勤の引継ぎが勤務の途中で2枚に割れる
+    let notebookDayStartHour = 5;
+    const NOTEBOOK_WEEKDAYS = {
+      ja: ['日', '月', '火', '水', '木', '金', '土'],
+      en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+      ne: ['आइत', 'सोम', 'मङ्गल', 'बुध', 'बिहि', 'शुक्र', 'शनि']
+    };
+
+    function businessDayKey(date) {
+      const d = new Date(date.getTime() - notebookDayStartHour * 3600000);
+      const pad = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    }
+
+    function entryDate(entry) {
+      return (entry.createdAt && entry.createdAt.toDate) ? entry.createdAt.toDate() : null;
+    }
+
+    // 自動リマインドは引継ぎ書には混ぜない。引継ぎは人が書いて人が引き継ぐものなので、
+    // 機械が足した行が同じ紙に並ぶと、どこまでが申し送りなのか分からなくなる
+    // （履歴とチャットには今までどおり残る）
+    function isAutoReminderEntry(entry) {
+      return String(entry.author || '').includes('自動リマインド');
+    }
+
+    function groupNotebookByDay(entries) {
+      const map = new Map();
+      entries.forEach(e => {
+        if (isAutoReminderEntry(e)) return;
+        // 投稿直後はサーバー時刻がまだ付いていない。落とすと自分の投稿が一瞬消える
+        const d = entryDate(e) || new Date();
+        const key = businessDayKey(d);
+        if (!map.has(key)) map.set(key, []);
+        map.get(key).push(e);
+      });
+      // 1枚の紙に「書き足していく」形にするため、日の中は古い順に並べる
+      map.forEach(list => list.sort((a, b) => (entryDate(a) || new Date()) - (entryDate(b) || new Date())));
+      return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+    }
+
+    function formatSheetTime(date) {
+      if (!date) return '';
+      return `${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+    }
+
+    function formatDayLabel(key) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key || '');
+      if (!m) return key || '';
+      const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      const week = NOTEBOOK_WEEKDAYS[currentLang] || NOTEBOOK_WEEKDAYS.ja;
+      return `${Number(m[2])}/${Number(m[3])}(${week[d.getDay()]})`;
+    }
+
+    function lastHandoverOf(list) {
+      for (let i = list.length - 1; i >= 0; i--) if (list[i].type === 'handover') return list[i];
+      return null;
+    }
+
+    // 未読は「その日の最後の引継ぎを誰も確認していない」状態。
+    // 誰が未読かまでは出せない（全員が同じ共通PINアカウントで、名簿も持っていないため）
+    function dayConfirmCount(list) {
+      const handover = lastHandoverOf(list);
+      if (!handover) return null;
+      return handoverConfirmations.filter(c => c.entryId === handover.id).length;
+    }
+
+    function renderDayChip(list) {
+      const count = dayConfirmCount(list);
+      if (count === null) return '';
+      return count === 0
+        ? `<span class="day-chip unread">⚠️ ${escapeHtml(t('notebook.unread') || '未確認')}</span>`
+        : `<span class="day-chip read">✅ ${count}</span>`;
+    }
+
+    function renderSheetLines(list, skipKinkoForId) {
+      return list.map(e => {
+        const head = [formatSheetTime(entryDate(e)), e.author || '', showAllStores ? e.store : '']
+          .filter(Boolean).join(' ・ ');
+        // 最新の引継ぎの金庫記録は下の専用ブロックで出すため、ここでは重ねない
+        const kinko = (e.kinkoRecord && e.id !== skipKinkoForId)
+          ? `<div class="kinko-block"><div class="kinko-block-title">🔐 ${escapeHtml(t('notebook.kinko.title') || '金庫・レジ現金点検')}</div>`
+            + `<div class="kinko-block-body">${escapeHtml(formatKinkoRecordText(e.kinkoRecord))}</div></div>`
+          : '';
+        return `<div class="sheet-line"><div class="sheet-line-head">${escapeHtml(head)}</div>`
+          + `<div class="sheet-line-body">${escapeHtml(e.text || '')}</div>${kinko}</div>`;
+      }).join('');
+    }
+
+    function renderPastDays(pastDays) {
+      const el = document.getElementById('pastDayScroller');
+      if (!el) return;
+      if (!pastDays.length) {
+        el.innerHTML = `<div class="empty-state" style="flex: 1;">${escapeHtml(t('notebook.past.empty') || '過去の引継ぎはまだありません')}</div>`;
+        return;
+      }
+      el.innerHTML = pastDays.slice(0, 30).map(([key, list]) => {
+        const count = dayConfirmCount(list);
+        const body = list.map(e => {
+          const head = [formatSheetTime(entryDate(e)), e.author || ''].filter(Boolean).join(' ・ ');
+          return `${head}\n${e.text || ''}`;
+        }).join('\n\n');
+        return `<div class="day-card${count === 0 ? ' unread' : ''}">`
+          + `<div class="day-card-title">${escapeHtml(formatDayLabel(key))}${renderDayChip(list)}</div>`
+          + `<div class="day-card-body">${escapeHtml(body)}</div></div>`;
+      }).join('');
+    }
+
     function renderNotebookList() {
       const container = document.getElementById('notebookList');
       if (!container) return;
       const visible = visibleForActiveStore(notebookEntries);
 
-      const latestHandover = visible.find(e => e.type === 'handover');
+      // 上＝直近の営業日の1枚（通常は本日）、下＝それ以前を横スクロール
+      const grouped = groupNotebookByDay(visible);
+      const currentDay = grouped[0] || null;
+      const currentList = currentDay ? currentDay[1] : [];
+      renderPastDays(grouped.slice(1));
+
+      // 金庫ブロック・確認・印刷は「その紙の最後の引継ぎ」に紐づける。
+      // その日が自由記入だけのときは、従来どおり直近の引継ぎに戻す
+      const latestHandover = lastHandoverOf(currentList) || visible.find(e => e.type === 'handover');
       const latestContent = document.getElementById('latestHandoverContent');
       const latestMeta = document.getElementById('latestHandoverMeta');
       const latestKinko = document.getElementById('latestHandoverKinko');
+      const sheetCard = document.getElementById('todaySheetCard');
+      const sheetChip = document.getElementById('todaySheetChip');
+      const sheetDate = document.getElementById('todaySheetDate');
+      if (sheetDate) sheetDate.innerText = currentDay ? formatDayLabel(currentDay[0]) : '';
+      if (sheetChip) sheetChip.innerHTML = currentDay ? renderDayChip(currentList) : '';
+      if (sheetCard) sheetCard.classList.toggle('unread', dayConfirmCount(currentList) === 0);
       if (latestContent) {
-        if (latestHandover) {
-          latestContent.innerText = latestHandover.text;
-          latestMeta.innerText = [formatEntryTime(latestHandover), showAllStores ? latestHandover.store : '', latestHandover.author].filter(Boolean).join(' ・ ');
+        if (currentList.length) {
+          latestContent.innerHTML = renderSheetLines(currentList, latestHandover ? latestHandover.id : null);
+          latestMeta.innerText = '';
         } else {
           latestContent.innerText = t('notebook.latestHandover.none') || 'まだ引継ぎがありません。「📋 引継ぎを作成する」から作成してください。';
           latestMeta.innerText = '';
@@ -2853,6 +3024,20 @@
       presetInput.value = '';
       importantInput.checked = false;
       onHandoverAnswerTypeChange();
+    }
+
+    function saveNotebookDayStart() {
+      if (!requireDb()) return;
+      const input = document.getElementById('notebookDayStartInput');
+      const statusEl = document.getElementById('notebookDayStartStatus');
+      const hour = parseInt(input.value, 10);
+      if (isNaN(hour) || hour < 0 || hour > 23) {
+        statusEl.innerText = '0〜23の数字を入れてください';
+        return;
+      }
+      db.collection('appSettings').doc('general').set({ notebookDayStartHour: hour }, { merge: true });
+      delete input.dataset.userEdited;
+      statusEl.innerText = `✅ ${hour}時に切り替えます`;
     }
 
     function saveKinkoAppUrl() {
@@ -3908,11 +4093,21 @@
       printHandoverDoc(document.getElementById('handoverPreviewText').value, getMyName(), new Date().toLocaleString('ja-JP'));
     }
 
+    // 画面が「1枚の紙」になったので、印刷もその日ぶんをまとめて出す。
+    // 引継ぎだけを抜き出すと、あとから書き足された申し送りが紙に残らない
     function printLatestHandover() {
       const visible = visibleForActiveStore(notebookEntries);
-      const entry = visible.find(e => e.type === 'handover');
-      if (!entry) return;
-      printHandoverDoc(entry.text || '', entry.author || '', formatEntryTime(entry), entry.kinkoRecord);
+      const grouped = groupNotebookByDay(visible);
+      const currentDay = grouped[0];
+      if (!currentDay) return;
+      const [key, list] = currentDay;
+      const handover = lastHandoverOf(list);
+      const text = list.map(e => {
+        const head = [formatSheetTime(entryDate(e)), e.author || ''].filter(Boolean).join(' ・ ');
+        return `【${head}】\n${e.text || ''}`;
+      }).join('\n\n');
+      const authors = [...new Set(list.map(e => e.author).filter(Boolean))].join('、');
+      printHandoverDoc(text, authors, formatDayLabel(key), handover && handover.kinkoRecord);
     }
 
     function confirmLatestHandover() {
