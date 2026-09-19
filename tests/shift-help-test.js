@@ -181,6 +181,16 @@ async function bootStaffSession(browser, { shiftConfig }) {
   check('対応付け後は店舗名で出る', true, mapped.includes('博多住吉通り') && mapped.includes('清川二丁目') && !mapped.includes(STORE_A));
   check('自店には印を付ける', true, mapped.includes('自店'));
 
+  // ---------- 連携の状態がオーナー設定から読めること ----------
+  // ヘッダーは「募集が無い」ときも「つながっていない」ときも何も出さないため、
+  // 画面からは区別が付かない。オーナー設定で内訳が読めるようにしてある
+  const statusText = await page.locator('#shiftConnectionStatus').innerText();
+  checkIncludes('接続できていることが分かる', statusText, '接続できています');
+  checkIncludes('届いている件数が出る', statusText, '届いている募集 5件');
+  checkIncludes('表示中の件数が出る', statusText, '表示中 4件');
+  checkIncludes('過去日を除外したことが分かる', statusText, '過去日 1件');
+  info('オーナー設定の連携状態', statusText);
+
   // ---------- 書き込みは一切しない ----------
   const shiftWrites = await page.evaluate(() => (window.__firestoreWrites || []).filter(w => w.app === 'shiftApp'));
   const seeded = 5; // テスト自身が投入した5件
