@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { check, checkIncludes, checkNotIncludes, info, report } = require('./assert');
 const fs = require('fs');
 const path = require('path');
 const PORT = process.env.PORT || 8175;
@@ -7,7 +8,7 @@ const PORT = process.env.PORT || 8175;
   const page = await browser.newPage({ viewport: { width: 390, height: 950 } });
   const errors = [];
   page.on('pageerror', err => errors.push('pageerror: ' + err.message));
-  page.on('dialog', d => { console.log('dialog:', d.message()); d.accept(); });
+  page.on('dialog', d => { info('dialog', d.message()); d.accept(); });
 
   const mockScript = fs.readFileSync(path.join(__dirname, 'firebase-mock.js'), 'utf8');
   await page.addInitScript(mockScript);
@@ -15,7 +16,9 @@ const PORT = process.env.PORT || 8175;
     localStorage.setItem('firebase_config', JSON.stringify({ apiKey: 'mock', projectId: 'my-store-1234' }));
     localStorage.setItem('my_name', 'テスト太郎');
     window.__mockUsers = {
-      'staff@my-store-1234.local': { password: 'pin1234', user: { uid: 'shared-uid', isAnonymous: false, email: 'staff@my-store-1234.local', displayName: null } }
+      'staff@my-store-1234.local': { password: 'pin1234', user: { uid: 'shared-uid', isAnonymous: false, email: 'staff@my-store-1234.local', displayName: null } },
+      // オーナー設定は管理者の個人アカウントでのログインが要るようになった
+      'owner@test.example.com': { password: 'owner-pass1', user: { uid: 'owner-uid', isAnonymous: false, email: 'owner@test.example.com', displayName: null } }
     };
   });
   await page.goto(`http://localhost:${PORT}/index.html`);
@@ -26,7 +29,7 @@ const PORT = process.env.PORT || 8175;
 
   // ===== 2店舗を登録し、渋谷店をアクティブに =====
   await page.evaluate(() => {
-    window.firebase.firestore().collection('appSettings').doc('general').set({ stores: ['渋谷店', '新宿店'] });
+    window.firebase.firestore().collection('appSettings').doc('general').set({ adminEmails: ['owner@test.example.com'], stores: ['渋谷店', '新宿店'] });
   });
   await page.waitForTimeout(300);
   await page.evaluate(() => { chooseStore('渋谷店'); });
@@ -36,6 +39,11 @@ const PORT = process.env.PORT || 8175;
   await page.click('.home-topbar .settings-btn:has-text("⚙️")');
   await page.waitForTimeout(150);
   await page.click('button[onclick="openOwnerDrawer()"]');
+  await page.waitForTimeout(200);
+  await page.fill('#ownerLoginEmail', 'owner@test.example.com');
+  await page.fill('#ownerLoginPassword', 'owner-pass1');
+  await page.click('button[onclick="doOwnerLogin()"]');
+  await page.waitForTimeout(400);
   await page.waitForTimeout(150);
   await page.click('button[onclick="seedDefaultHandoverItems()"]');
   await page.waitForTimeout(400);
@@ -44,7 +52,8 @@ const PORT = process.env.PORT || 8175;
   await page.waitForTimeout(200);
   const dashboardInitial = await page.evaluate(() =>
     Array.from(document.querySelectorAll('#handoverDashboardList .task-row-label')).map(el => el.textContent));
-  console.log('dashboard initial (expect both 本日未作成):', dashboardInitial);
+  check('ダッシュボード初期状態は2店舗とも未作成', 2, dashboardInitial.filter(t => t.includes('本日未作成')).length);
+  info('dashboard initial', JSON.stringify(dashboardInitial));
 
   await page.click('#ownerDrawer .side-drawer-close-btn');
   await page.click('#sideDrawer .side-drawer-close-btn');
@@ -60,10 +69,14 @@ const PORT = process.env.PORT || 8175;
     const isCount = await page.locator('#handoverCountRow').isVisible();
     const qText = await page.locator('#handoverQuestionText').innerText();
     if (isCount) {
-      await page.fill('#handoverCountInput', '2');
+      await page.click('#handoverCountGrid button:text-is("2")');  // 件数は入力欄からボタン選択に変わった
     } else if (qText.includes('レジの過不足')) {
       await page.click('#handoverYesBtn');
-      await page.fill('#handoverDetailInput', '1000円不足');
+      // あり／なしの質問には詳細欄が出なくなった（引継ぎのテンポを落とさないため）。
+  // 出ているときだけ入力する
+  if (await page.locator('#handoverDetailWrap').isVisible().catch(() => false)) {
+    await page.fill('#handoverDetailInput', '1000円不足');
+  }
     } else {
       await page.click('#handoverNoBtn');
     }
@@ -76,41 +89,42 @@ const PORT = process.env.PORT || 8175;
   page.once('dialog', d => d.dismiss().catch(() => {}));
   await page.evaluate(() => { window.print = () => { __pw_printedPreview = true; }; });
   await page.click('button[onclick="printHandoverPreview()"]');
-  console.log('printHandoverPreview called ok:', await page.evaluate(() => __pw_printedPreview === true));
+  info('printHandoverPreview called ok', await page.evaluate(() => __pw_printedPreview === true));
 
   await page.click('button[onclick="submitHandover()"]');
   await page.waitForTimeout(400);
 
   // ===== 掲示板への重要項目自動投稿を確認 =====
   const bulletinTitles = await page.evaluate(() => bulletinPosts.map(p => p.title));
-  console.log('bulletin posts after submit (expect ⚠️ 重要な引継ぎ事項):', bulletinTitles);
+  check('重要項目が掲示板に1件投稿される', 1, bulletinTitles.length);
+  checkIncludes('掲示板の見出し', bulletinTitles.join(' '), '重要な引継ぎ事項');
   const importantPost = await page.evaluate(() => {
     const p = bulletinPosts.find(x => x.title === '⚠️ 重要な引継ぎ事項');
     return p ? { body: p.body, requiresAck: p.requiresAck, storeTags: p.storeTags } : null;
   });
-  console.log('important bulletin post:', JSON.stringify(importantPost));
+  info('important bulletin post', JSON.stringify(importantPost));
 
   // ===== 最新引継ぎの印刷ボタンが表示される =====
-  console.log('latest handover print button visible:', await page.locator('#latestHandoverPrintBtn').isVisible());
+  info('latest handover print button visible', await page.locator('#latestHandoverPrintBtn').isVisible());
   await page.evaluate(() => { __pw_printedLatest = false; window.print = () => { __pw_printedLatest = true; }; });
   await page.click('#latestHandoverPrintBtn');
-  console.log('printLatestHandover called ok:', await page.evaluate(() => __pw_printedLatest === true));
+  info('printLatestHandover called ok', await page.evaluate(() => __pw_printedLatest === true));
 
   // ===== 履歴フィルタ: 引継ぎのみ + 日付 =====
   await page.click('#notebookFilterHandoverOnly');
   await page.waitForTimeout(150);
   const handoverOnlyCount = await page.locator('#notebookList .card').count();
-  console.log('history count with handover-only filter (expect 1):', handoverOnlyCount);
+  check('history count with handover-only filter', 1, handoverOnlyCount);
 
   const todayStr = new Date().toISOString().slice(0, 10);
   await page.fill('#notebookFilterDate', todayStr);
   await page.waitForTimeout(150);
   const dateFilterCount = await page.locator('#notebookList .card').count();
-  console.log('history count with today date filter (expect 1):', dateFilterCount);
+  check('history count with today date filter', 1, dateFilterCount);
 
   await page.click('button[onclick="clearNotebookFilters()"]');
   await page.waitForTimeout(150);
-  console.log('filters cleared, handoverOnly checked:', await page.locator('#notebookFilterHandoverOnly').isChecked());
+  info('filters cleared, handoverOnly checked', await page.locator('#notebookFilterHandoverOnly').isChecked());
 
   // ===== 引継ぎ確認サイン =====
   await page.click('#latestHandoverConfirmBtn');
@@ -123,7 +137,7 @@ const PORT = process.env.PORT || 8175;
   await page.mouse.up();
   await page.click('button[onclick="confirmSignature()"]');
   await page.waitForTimeout(300);
-  console.log('confirm button hidden after signing:', !(await page.locator('#latestHandoverConfirmBtn').isVisible()));
+  info('confirm button hidden after signing', !(await page.locator('#latestHandoverConfirmBtn').isVisible()));
 
   // ===== ダッシュボードで渋谷店が「本日作成済み・確認済み」になっているか =====
   await page.click('.back-btn');
@@ -134,7 +148,9 @@ const PORT = process.env.PORT || 8175;
   await page.waitForTimeout(300);
   const dashboardAfter = await page.evaluate(() =>
     Array.from(document.querySelectorAll('#handoverDashboardList .task-row-label')).map(el => el.textContent));
-  console.log('dashboard after handover+confirm (expect 渋谷店: 本日作成済み・確認済み / 新宿店: 本日未作成):', dashboardAfter);
+  checkIncludes('投稿・確認した店舗は作成済みと確認済みになる', dashboardAfter[0], '本日作成済み');
+  checkIncludes('確認済みも出る', dashboardAfter[0], '確認済み');
+  checkIncludes('もう一方の店舗は未作成のまま', dashboardAfter[1], '本日未作成');
   await page.click('#ownerDrawer .side-drawer-close-btn');
   await page.click('#sideDrawer .side-drawer-close-btn');
   await page.waitForTimeout(150);
@@ -157,16 +173,18 @@ const PORT = process.env.PORT || 8175;
   await page.evaluate(() => checkAndPostHandoverReminders());
   await page.waitForTimeout(300);
   const reminderNotes = await page.evaluate(() => notebookEntries.filter(e => e.author === '🔔 自動リマインド').map(e => e.text));
-  console.log('auto reminder notes posted (expect 1, mentioning 2時間以上):', reminderNotes);
+  check('未確認の督促が1件投稿される', 1, reminderNotes.length);
+  checkIncludes('督促の文面に2時間以上が入る', reminderNotes.join(' '), '2時間以上');
   const reminderChats = await page.evaluate(() => chatMessages.filter(m => m.sender === '🔔 自動リマインド').length);
-  console.log('auto reminder chat messages posted (expect 1):', reminderChats);
+  check('auto reminder chat messages posted', 1, reminderChats);
 
   // 二重投稿されないことの確認
   await page.evaluate(() => checkAndPostHandoverReminders());
   await page.waitForTimeout(300);
   const reminderNotesAfterSecondRun = await page.evaluate(() => notebookEntries.filter(e => e.author === '🔔 自動リマインド').length);
-  console.log('reminder notes after second run (expect still 1, no duplicate):', reminderNotesAfterSecondRun);
+  check('再実行しても督促を二重投稿しない', 1, reminderNotesAfterSecondRun);
 
-  console.log('errors:', JSON.stringify(errors));
+  check('ページエラーなし', '[]', JSON.stringify(errors));
+  report();
   await browser.close();
 })();

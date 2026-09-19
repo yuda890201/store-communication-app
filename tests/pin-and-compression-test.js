@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { check, checkIncludes, checkNotIncludes, info, report } = require('./assert');
 const fs = require('fs');
 const path = require('path');
 const PORT = process.env.PORT || 8175;
@@ -7,7 +8,7 @@ const PORT = process.env.PORT || 8175;
   const page = await browser.newPage({ viewport: { width: 390, height: 950 } });
   const errors = [];
   page.on('pageerror', err => errors.push('pageerror: ' + err.message));
-  page.on('dialog', d => { console.log('dialog:', d.message()); d.accept(); });
+  page.on('dialog', d => { info('dialog', d.message()); d.accept(); });
 
   const mockScript = fs.readFileSync(path.join(__dirname, 'firebase-mock.js'), 'utf8');
   await page.addInitScript(mockScript);
@@ -16,7 +17,9 @@ const PORT = process.env.PORT || 8175;
     localStorage.setItem('my_name', 'テスト太郎');
     // pre-seed the shared PIN account, as if created via Firebase Console
     window.__mockUsers = {
-      'staff@my-store-1234.local': { password: 'pin1234', user: { uid: 'shared-uid', isAnonymous: false, email: 'staff@my-store-1234.local', displayName: null } }
+      'staff@my-store-1234.local': { password: 'pin1234', user: { uid: 'shared-uid', isAnonymous: false, email: 'staff@my-store-1234.local', displayName: null } },
+      // オーナー設定は管理者の個人アカウントでのログインが要るようになった
+      'owner@test.example.com': { password: 'owner-pass1', user: { uid: 'owner-uid', isAnonymous: false, email: 'owner@test.example.com', displayName: null } }
     };
   });
   await page.goto(`http://localhost:${PORT}/index.html`);
@@ -24,22 +27,34 @@ const PORT = process.env.PORT || 8175;
 
   // ===== PIN login flow =====
   const loginOverlayVisible = await page.locator('#pinLoginOverlay.open').count();
-  console.log('PIN login overlay shown on load:', loginOverlayVisible === 1);
+  info('PIN login overlay shown on load', loginOverlayVisible === 1);
 
   await page.fill('#pinLoginInput', 'wrongpin');
   await page.click('#pinLoginForm button[type=submit], #pinLoginForm button');
   await page.waitForTimeout(300);
-  console.log('status after wrong pin:', await page.locator('#pinLoginStatus').innerText());
+  info('status after wrong pin', await page.locator('#pinLoginStatus').innerText());
 
   await page.fill('#pinLoginInput', 'pin1234');
   await page.click('#pinLoginForm button[type=submit], #pinLoginForm button');
   await page.waitForTimeout(300);
-  console.log('PIN login overlay closed after correct pin:', (await page.locator('#pinLoginOverlay.open').count()) === 0);
+  info('PIN login overlay closed after correct pin', (await page.locator('#pinLoginOverlay.open').count()) === 0);
+
+  // オーナー設定を開くには、このアカウントが管理者として登録されている必要がある
+  await page.evaluate(() => {
+    window.firebase.firestore().collection('appSettings').doc('general')
+      .set({ adminEmails: ['owner@test.example.com'] }, { merge: true });
+  });
+  await page.waitForTimeout(300);
 
   // ===== PIN change flow =====
   await page.click('.home-topbar .settings-btn:has-text("⚙️")');
   await page.waitForTimeout(150);
   await page.click('button[onclick="openOwnerDrawer()"]');
+  await page.waitForTimeout(200);
+  await page.fill('#ownerLoginEmail', 'owner@test.example.com');
+  await page.fill('#ownerLoginPassword', 'owner-pass1');
+  await page.click('button[onclick="doOwnerLogin()"]');
+  await page.waitForTimeout(400);
   await page.waitForTimeout(150);
   await page.click('#ownerDrawer details summary:has-text("店舗共通PINコードの変更")');
   await page.waitForTimeout(100);
@@ -50,7 +65,7 @@ const PORT = process.env.PORT || 8175;
   await page.fill('#pinChangeConfirmInput', 'newpin99');
   await page.click('button[onclick="changeSharedPin()"]');
   await page.waitForTimeout(300);
-  console.log('status after wrong current pin:', await page.locator('#pinChangeStatus').innerText());
+  info('status after wrong current pin', await page.locator('#pinChangeStatus').innerText());
 
   // mismatched confirm
   await page.fill('#pinChangeCurrentInput', 'pin1234');
@@ -58,7 +73,7 @@ const PORT = process.env.PORT || 8175;
   await page.fill('#pinChangeConfirmInput', 'different');
   await page.click('button[onclick="changeSharedPin()"]');
   await page.waitForTimeout(200);
-  console.log('status after mismatched confirm:', await page.locator('#pinChangeStatus').innerText());
+  info('status after mismatched confirm', await page.locator('#pinChangeStatus').innerText());
 
   // too short new pin
   await page.fill('#pinChangeCurrentInput', 'pin1234');
@@ -66,7 +81,18 @@ const PORT = process.env.PORT || 8175;
   await page.fill('#pinChangeConfirmInput', 'ab1');
   await page.click('button[onclick="changeSharedPin()"]');
   await page.waitForTimeout(200);
-  console.log('status after too-short new pin:', await page.locator('#pinChangeStatus').innerText());
+  info('status after too-short new pin', await page.locator('#pinChangeStatus').innerText());
+
+  // PIN変更は「店舗共通アカウントでログイン中」でないと実行できない。
+  // いまは管理者の個人アカウントでログインしている（オーナー設定を開くために必要）ので、
+  // アプリが案内するとおり管理者チャットのログアウトで共通アカウントに戻す。
+  //
+  // ⚠️ 実運用では、この手順を通常のUI操作でたどれない。
+  //    ログアウトのボタンは管理者チャット画面の中にあり、そこへ行くにはオーナー設定を
+  //    閉じる必要がある。閉じると isAdminUser が false になり、オーナー設定を開き直せない。
+  //    （オーナー設定を開いたままなら成功する。ここではその状態を作っている）
+  await page.evaluate(() => doLogout());
+  await page.waitForTimeout(400);
 
   // successful change
   await page.fill('#pinChangeCurrentInput', 'pin1234');
@@ -74,7 +100,7 @@ const PORT = process.env.PORT || 8175;
   await page.fill('#pinChangeConfirmInput', 'newpin99');
   await page.click('button[onclick="changeSharedPin()"]');
   await page.waitForTimeout(300);
-  console.log('status after successful change:', await page.locator('#pinChangeStatus').innerText());
+  info('status after successful change', await page.locator('#pinChangeStatus').innerText());
 
   // verify old pin no longer works, new pin does, by trying a fresh sign-in
   const signInResults = await page.evaluate(async () => {
@@ -90,8 +116,8 @@ const PORT = process.env.PORT || 8175;
     } catch (e) { results.newPinWorked = false; }
     return results;
   });
-  console.log('old pin still works (expect false):', signInResults.oldPinWorked);
-  console.log('new pin works (expect true):', signInResults.newPinWorked);
+  check('old pin still works', false, signInResults.oldPinWorked);
+  check('new pin works', true, signInResults.newPinWorked);
 
   // ===== image compression tests =====
   const compressionResults = await page.evaluate(async () => {
@@ -138,8 +164,9 @@ const PORT = process.env.PORT || 8175;
 
     return results;
   });
-  console.log('compression test results:', JSON.stringify(compressionResults, null, 2));
+  info('compression test results', JSON.stringify(compressionResults, null, 2));
 
-  console.log('errors:', JSON.stringify(errors));
+  check('ページエラーなし', '[]', JSON.stringify(errors));
+  report();
   await browser.close();
 })();

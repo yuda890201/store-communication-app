@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { check, checkIncludes, checkNotIncludes, info, report } = require('./assert');
 const fs = require('fs');
 const path = require('path');
 const PORT = process.env.PORT || 8175;
@@ -7,16 +8,25 @@ const PORT = process.env.PORT || 8175;
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   const errors = [];
   page.on('pageerror', err => errors.push('pageerror: ' + err.message));
-  page.on('dialog', d => { console.log('dialog:', d.message()); d.accept(); });
+  page.on('dialog', d => { info('dialog', d.message()); d.accept(); });
 
   const mockScript = fs.readFileSync(path.join(__dirname, 'firebase-mock.js'), 'utf8');
   await page.addInitScript(mockScript);
   await page.addInitScript(() => {
+    // アプリ全体がPINログインで保護されている。これらのテストはPIN導入前に
+    // 書かれたもので、ログインしないとPIN画面が全クリックを遮る
+    window.__mockUsers = {
+      'staff@mock.local': { password: 'pin1234', user: { uid: 'shared-uid', isAnonymous: false, email: 'staff@mock.local', displayName: null } }
+    };
     localStorage.setItem('firebase_config', JSON.stringify({ apiKey: 'mock', projectId: 'mock' }));
     localStorage.setItem('my_name', 'テスト太郎');
   });
   await page.goto(`http://localhost:${PORT}/index.html`);
   await page.waitForTimeout(300);
+  await page.waitForTimeout(300);
+  await page.fill('#pinLoginInput', 'pin1234');
+  await page.click('#pinLoginForm button');
+  await page.waitForTimeout(400);
 
   await page.evaluate(() => {
     window.firebase.firestore().collection('appSettings').doc('general').set({ stores: ['渋谷店', '新宿店'] });
@@ -56,21 +66,21 @@ const PORT = process.env.PORT || 8175;
   await page.fill('#manualImportText', manualText);
   await page.click('button[onclick="previewManualImport()"]');
   await page.waitForTimeout(200);
-  console.log('manual import status (after preview):', await page.locator('#manualImportStatus').innerText());
+  info('manual import status (after preview)', await page.locator('#manualImportStatus').innerText());
   await page.screenshot({ path: path.join(__dirname, 'imt01-manual-preview.png') });
 
   const previewRowCount = await page.locator('#manualImportPreviewList .import-preview-row').count();
-  console.log('manual preview rows:', previewRowCount);
+  info('manual preview rows', previewRowCount);
 
   // uncheck the 2nd item
   await page.locator('#manualImportPreviewList .import-preview-row').nth(1).locator('input[type=checkbox]').uncheck();
   await page.click('button[onclick="confirmManualImport()"]');
   await page.waitForTimeout(300);
-  console.log('manual import status (after confirm):', await page.locator('#manualImportStatus').innerText());
+  info('manual import status (after confirm)', await page.locator('#manualImportStatus').innerText());
   await page.screenshot({ path: path.join(__dirname, 'imt02-manual-after-confirm.png') });
 
   const manualCount = await page.locator('#manualList details').count();
-  console.log('manual entries visible after import (expect 1, since 1 unchecked):', manualCount);
+  check('チェックを外した1件は取り込まれない', 1, manualCount);
 
   // ===== トレーニング テキストインポート =====
   await page.click('[data-view="manual"] .back-btn');
@@ -98,17 +108,18 @@ const PORT = process.env.PORT || 8175;
   await page.fill('#trainingImportText', trainingText);
   await page.click('button[onclick="previewTrainingImport()"]');
   await page.waitForTimeout(200);
-  console.log('training import status (after preview):', await page.locator('#trainingImportStatus').innerText());
+  info('training import status (after preview)', await page.locator('#trainingImportStatus').innerText());
   await page.screenshot({ path: path.join(__dirname, 'imt03-training-preview.png') });
 
   await page.click('button[onclick="confirmTrainingImport()"]');
   await page.waitForTimeout(300);
-  console.log('training import status (after confirm):', await page.locator('#trainingImportStatus').innerText());
+  info('training import status (after confirm)', await page.locator('#trainingImportStatus').innerText());
   await page.screenshot({ path: path.join(__dirname, 'imt04-training-after-confirm.png') });
 
   const stepCount = await page.locator('#trainingStepList .step-row').count();
-  console.log('training steps visible after import (expect 3):', stepCount);
+  check('training steps visible after import', 3, stepCount);
 
-  console.log('errors:', JSON.stringify(errors));
+  check('ページエラーなし', '[]', JSON.stringify(errors));
+  report();
   await browser.close();
 })();

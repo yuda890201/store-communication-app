@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { check, checkIncludes, checkNotIncludes, info, report } = require('./assert');
 const fs = require('fs');
 const path = require('path');
 const PORT = process.env.PORT || 8175;
@@ -11,14 +12,29 @@ const PORT = process.env.PORT || 8175;
   const mockScript = fs.readFileSync(path.join(__dirname, 'firebase-mock.js'), 'utf8');
   await page.addInitScript(mockScript);
   await page.addInitScript(() => {
+    // アプリ全体がPINログインで保護されている。これらのテストはPIN導入前に
+    // 書かれたもので、ログインしないとPIN画面が全クリックを遮る
+    window.__mockUsers = {
+      'staff@mock.local': { password: 'pin1234', user: { uid: 'shared-uid', isAnonymous: false, email: 'staff@mock.local', displayName: null } }
+    };
     localStorage.setItem('firebase_config', JSON.stringify({ apiKey: 'mock', projectId: 'mock' }));
     localStorage.setItem('my_name', 'テスト太郎');
   });
   await page.goto(`http://localhost:${PORT}/index.html`);
   await page.waitForTimeout(300);
+  await page.waitForTimeout(300);
+  await page.fill('#pinLoginInput', 'pin1234');
+  await page.click('#pinLoginForm button');
+  await page.waitForTimeout(400);
   await page.evaluate(() => {
     window.firebase.firestore().collection('appSettings').doc('general').set({ stores: ['渋谷店', '新宿店'] });
   });
+  await page.waitForTimeout(300);
+  // 店舗が2つ以上あると起動時に店舗選択モーダルが開き、以降のクリックを遮る
+  if (await page.locator('.store-option-btn:has-text("渋谷店")').isVisible().catch(() => false)) {
+    await page.click('.store-option-btn:has-text("渋谷店")');
+    await page.waitForTimeout(200);
+  }
   await page.waitForTimeout(200);
 
   await page.click(`.grid-card[onclick="openView('training')"]`);
@@ -37,13 +53,14 @@ const PORT = process.env.PORT || 8175;
   await page.selectOption('#trainingFilterStore', '新宿店');
   await page.waitForTimeout(150);
   const countShinjuku = await page.locator('#trainingStepList .step-row').count();
-  console.log('training steps visible filtered to 新宿店 (expect 1):', countShinjuku);
+  check('training steps visible filtered to 新宿店', 1, countShinjuku);
 
   await page.selectOption('#trainingFilterStore', '渋谷店');
   await page.waitForTimeout(150);
   const countShibuya = await page.locator('#trainingStepList .step-row').count();
-  console.log('training steps visible filtered to 渋谷店 (expect 2):', countShibuya);
+  check('training steps visible filtered to 渋谷店', 2, countShibuya);
 
-  console.log('errors:', JSON.stringify(errors));
+  check('ページエラーなし', '[]', JSON.stringify(errors));
+  report();
   await browser.close();
 })();
