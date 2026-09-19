@@ -83,17 +83,9 @@ const PORT = process.env.PORT || 8175;
   await page.waitForTimeout(200);
   info('status after too-short new pin', await page.locator('#pinChangeStatus').innerText());
 
-  // PIN変更は「店舗共通アカウントでログイン中」でないと実行できない。
-  // いまは管理者の個人アカウントでログインしている（オーナー設定を開くために必要）ので、
-  // アプリが案内するとおり管理者チャットのログアウトで共通アカウントに戻す。
-  //
-  // ⚠️ 実運用では、この手順を通常のUI操作でたどれない。
-  //    ログアウトのボタンは管理者チャット画面の中にあり、そこへ行くにはオーナー設定を
-  //    閉じる必要がある。閉じると isAdminUser が false になり、オーナー設定を開き直せない。
-  //    （オーナー設定を開いたままなら成功する。ここではその状態を作っている）
-  await page.evaluate(() => doLogout());
-  await page.waitForTimeout(400);
-
+  // 管理者としてログインしたままPINを変更する。
+  // 以前はこれができず、共通アカウントに戻す必要があったが、その手順は通常のUI操作で
+  // たどれなかった（shared-pin-change-test.js を参照）。
   // successful change
   await page.fill('#pinChangeCurrentInput', 'pin1234');
   await page.fill('#pinChangeNewInput', 'newpin99');
