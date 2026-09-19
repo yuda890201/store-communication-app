@@ -64,6 +64,7 @@ NODE_PATH=/opt/node22/lib/node_modules node tests/pin-rate-limit-test.js
 | `i18n-test.js` | 英語・ネパール語への切り替え |
 | `trouble-reports-test.js` | 不具合報告アプリとの連携（別プロジェクトの読み取り専用購読） |
 | `reminders-test.js` | 忘れ物の自動リマインド、期限超過の督促 |
+| `shift-help-test.js` | シフト管理アプリとの連携（ヘルプ募集のヘッダー表示・過去日の除外・店舗の対応付け・`#help=` での起動・接続失敗時に「0件」と言わないこと） |
 
 ## `stale/` について
 
