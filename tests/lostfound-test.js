@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { check, checkIncludes, checkNotIncludes, info, report } = require('./assert');
 const fs = require('fs');
 const path = require('path');
 const PORT = process.env.PORT || 8175;
@@ -8,7 +9,7 @@ const PORT = process.env.PORT || 8175;
   const errors = [];
   page.on('pageerror', err => errors.push('pageerror: ' + err.message));
   page.on('dialog', d => {
-    console.log('dialog:', d.message());
+    info('dialog', d.message());
     if (d.type() === 'prompt') d.accept('山田太郎');
     else d.accept();
   });
@@ -16,15 +17,26 @@ const PORT = process.env.PORT || 8175;
   const mockScript = fs.readFileSync(path.join(__dirname, 'firebase-mock.js'), 'utf8');
   await page.addInitScript(mockScript);
   await page.addInitScript(() => {
+    // アプリ全体がPINログインで保護されている。これらのテストはPIN導入前に
+    // 書かれたもので、ログインしないとPIN画面が全クリックを遮る
+    window.__mockUsers = {
+      'staff@mock.local': { password: 'pin1234', user: { uid: 'shared-uid', isAnonymous: false, email: 'staff@mock.local', displayName: null } },
+      // オーナー設定は管理者の個人アカウントでのログインが要るようになった
+      'owner@test.example.com': { password: 'owner-pass1', user: { uid: 'owner-uid', isAnonymous: false, email: 'owner@test.example.com', displayName: null } }
+    };
     localStorage.setItem('firebase_config', JSON.stringify({ apiKey: 'mock', projectId: 'mock' }));
     localStorage.setItem('my_name', 'テスト太郎');
     window.print = () => { window.__printCalled = (window.__printCalled || 0) + 1; };
   });
   await page.goto(`http://localhost:${PORT}/index.html`);
   await page.waitForTimeout(300);
+  await page.waitForTimeout(300);
+  await page.fill('#pinLoginInput', 'pin1234');
+  await page.click('#pinLoginForm button');
+  await page.waitForTimeout(400);
 
   await page.evaluate(() => {
-    window.firebase.firestore().collection('appSettings').doc('general').set({ stores: ['渋谷店'] });
+    window.firebase.firestore().collection('appSettings').doc('general').set({ adminEmails: ['owner@test.example.com'], stores: ['渋谷店'] });
   });
   await page.waitForTimeout(200);
 
@@ -35,6 +47,11 @@ const PORT = process.env.PORT || 8175;
   await page.click('[data-view="lostfound"] .settings-btn:has-text("⚙️")');
   await page.waitForTimeout(150);
   await page.click('button[onclick="openOwnerDrawer()"]');
+  await page.waitForTimeout(200);
+  await page.fill('#ownerLoginEmail', 'owner@test.example.com');
+  await page.fill('#ownerLoginPassword', 'owner-pass1');
+  await page.click('button[onclick="doOwnerLogin()"]');
+  await page.waitForTimeout(400);
   await page.waitForTimeout(150);
   await page.click('#ownerDrawer details summary:has-text("忘れ物・警察届出設定")');
   await page.waitForTimeout(100);
@@ -73,30 +90,10 @@ const PORT = process.env.PORT || 8175;
   await page.waitForTimeout(300);
   await page.screenshot({ path: path.join(__dirname, 'lf02-list-with-reminders.png') });
 
-  const reminderCount = await page.locator('#lostReminders .lost-reminder-card').count();
-  console.log('reminder cards shown:', reminderCount);
-  const reminderTexts = await page.locator('#lostReminders .lost-reminder-title').allInnerTexts();
-  console.log('reminder titles:', reminderTexts);
-
-  // click the police-report reminder -> filter to valuables
-  const policeCard = page.locator('#lostReminders .lost-reminder-card', { hasText: '警察届出' });
-  await policeCard.click();
-  await page.waitForTimeout(150);
-  console.log('filtered card count (expect 1, the wallet):', await page.locator('#lostList .card').count());
-  await page.screenshot({ path: path.join(__dirname, 'lf03-filtered-police.png') });
-
-  // clear filter
-  await page.click('#lostFilterBanner button');
-  await page.waitForTimeout(150);
-  console.log('unfiltered card count (expect 2):', await page.locator('#lostList .card').count());
-
-  // click 3-month reminder
-  const overdueCard = page.locator('#lostReminders .lost-reminder-card', { hasText: '保管期限' });
-  await overdueCard.click();
-  await page.waitForTimeout(150);
-  console.log('filtered card count for overdue3m (expect 1, the umbrella):', await page.locator('#lostList .card').count());
-  await page.click('#lostFilterBanner button');
-  await page.waitForTimeout(150);
+  // 画面内のリマインドカード（#lostReminders）と、それをタップして一覧を絞る機能は
+  // 廃止され、自動投稿のリマインドに置き換わった（reminders-test.js が後継）。
+  // ここでは一覧に2件とも出ていることだけ確かめる
+  check('list shows both items', 2, await page.locator('#lostList .card').count());
 
   // ===== print memo for the wallet =====
   await page.evaluate(() => { window.__printCalled = 0; });
@@ -105,9 +102,9 @@ const PORT = process.env.PORT || 8175;
   await page.waitForTimeout(150);
   const printCalledMemo = await page.evaluate(() => window.__printCalled);
   const printAreaMemoHtml = await page.locator('#printArea').innerHTML();
-  console.log('print called for memo:', printCalledMemo);
-  console.log('print area contains title:', printAreaMemoHtml.includes('黒い財布'));
-  console.log('print area contains store name:', printAreaMemoHtml.includes('テスト商店'));
+  info('print called for memo', printCalledMemo);
+  info('print area contains title', printAreaMemoHtml.includes('黒い財布'));
+  info('print area contains store name', printAreaMemoHtml.includes('テスト商店'));
 
   // ===== mark wallet returned with signature =====
   await walletCard.locator('button', { hasText: '返却済みにする' }).click();
@@ -123,14 +120,14 @@ const PORT = process.env.PORT || 8175;
   await page.waitForTimeout(300);
   await page.screenshot({ path: path.join(__dirname, 'lf04-after-return-signed.png') });
   const returnedMeta = await page.locator('#lostList .card', { hasText: '黒い財布' }).locator('.entry-meta', { hasText: '引き渡し先' }).innerText();
-  console.log('returned meta:', returnedMeta);
+  info('returned meta', returnedMeta);
 
   // ===== police form composer =====
   await page.click('button[onclick="openPoliceFormComposer()"]');
   await page.waitForTimeout(200);
   await page.screenshot({ path: path.join(__dirname, 'lf05-police-composer.png') });
   const composerRowCount = await page.locator('#policeFormItemList .police-form-item-row').count();
-  console.log('police form composer candidate rows (expect 1, umbrella - wallet already returned):', composerRowCount);
+  check('返却済みを除いた届出候補は1件', 1, composerRowCount);
 
   // check the row (unchecked by default since umbrella has no valuable tags), fill item code/points and print
   await page.locator('#policeFormItemList .police-form-item-row input[type="checkbox"]').check();
@@ -141,17 +138,18 @@ const PORT = process.env.PORT || 8175;
   await page.waitForTimeout(300);
   const printCalledForm = await page.evaluate(() => window.__printCalled);
   const printAreaFormHtml = await page.locator('#printArea').innerHTML();
-  console.log('print called for police form:', printCalledForm);
-  console.log('print area contains form title:', printAreaFormHtml.includes('占有者拾得物届出書'));
-  console.log('print area contains store address:', printAreaFormHtml.includes('東京都渋谷区'));
-  console.log('print area contains occupant code:', printAreaFormHtml.includes('OCC-999'));
-  console.log('print area contains item code A123:', printAreaFormHtml.includes('A123'));
+  info('print called for police form', printCalledForm);
+  info('print area contains form title', printAreaFormHtml.includes('占有者拾得物届出書'));
+  info('print area contains store address', printAreaFormHtml.includes('東京都渋谷区'));
+  info('print area contains occupant code', printAreaFormHtml.includes('OCC-999'));
+  info('print area contains item code A123', printAreaFormHtml.includes('A123'));
 
   await page.waitForTimeout(200);
   await page.screenshot({ path: path.join(__dirname, 'lf06-after-police-print.png') });
   const reportedBadge = await page.locator('#lostList .card', { hasText: '古い傘' }).locator('.valuable-badge', { hasText: '届出済み' }).count();
-  console.log('umbrella marked as reported (expect 1):', reportedBadge);
+  check('umbrella marked as reported', 1, reportedBadge);
 
-  console.log('errors:', JSON.stringify(errors));
+  check('ページエラーなし', '[]', JSON.stringify(errors));
+  report();
   await browser.close();
 })();
